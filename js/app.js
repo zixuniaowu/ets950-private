@@ -7,7 +7,7 @@ const DEBUG = /[?&]debug=1/.test(location.search);
 const LET = "ABCD";
 const PART_ZH = {1: "Part 1 照片描述", 2: "Part 2 应答问题", 3: "Part 3 会话问题", 4: "Part 4 说明文问题", 5: "Part 5 短句填空", 6: "Part 6 长文填空", 7: "Part 7 阅读理解"};
 const PART_DIR_ZH = {
-  1: "听 4 个描述（不印在屏幕上），选出最符合照片的一项。原书照片受版权保护，这里用英文文字描述代替。只播放一次。",
+  1: "听 4 个描述（不印在屏幕上），选出最符合照片的一项。只播放一次。",
   2: "听一个问题或陈述和 3 个回答（不印在屏幕上），选出最恰当的回答。只播放一次。",
   3: "听两人或三人的对话，回答 3 个问题。问题和选项显示在屏幕上，可边听边作答。",
   4: "听一段独白（广播、留言、讲话等），回答 3 个问题。可边听边作答。"
@@ -90,6 +90,14 @@ async function unlock(pw) {
   let plain;
   try { plain = await decryptBin(key, bytes); } catch { throw new Error("BADPW"); }
   DATA = JSON.parse(new TextDecoder().decode(plain)); KEY = key;
+  await loadImages();
+}
+/* Part 1 photos: one encrypted blob → Blob URL per photo */
+const IMG = {};
+async function loadImages() {
+  if (!META.files.p1img || !DATA.p1img) return;
+  const ab = await decryptBin(KEY, await fetchBin(META.files.p1img.file));
+  for (const [n, c] of Object.entries(DATA.p1img)) IMG[n] = URL.createObjectURL(new Blob([new Uint8Array(ab, c.off, c.len)], {type: "image/jpeg"}));
 }
 /* audio: one encrypted blob per Part → decrypted → one Blob URL per clip */
 const AudioStore = {
@@ -228,7 +236,7 @@ function renderIntro(vid) {
   <ul class="rules">
    <li>每段音频<b>只自动播放一次</b>，不能暂停、不能重听、不能回到前面的题。</li>
    <li>音频播放时就可以作答；一段音频结束后自动进入下一题。</li>
-   <li>Part 1、Part 2 的选项<b>不显示文字</b>，只能靠听；Part 1 的照片以英文文字描述代替。Part 3、Part 4 的问题和选项显示在屏幕上。</li>
+   <li>Part 1、Part 2 的选项<b>不显示文字</b>，只能靠听；Part 3、Part 4 的问题和选项显示在屏幕上。</li>
    <li>开始前会先下载并解密音频（约 17 MB），请在网络良好时开始。</li>
   </ul>` : ""}
   ${R ? `<h3>📖 阅读（${R.units.map(u => `${u.name} ${Math.round(u.time / 60)} 分钟`).join(" + ")}）</h3>
@@ -367,7 +375,9 @@ function bindOpts(root) {
     if (S.phase === "R") updatePaletteState();
   });
 }
-const photoHTML = g => `<div class="photo-ph"><div class="lbl">📷 照片（文字描述代替原图）</div><p>${esc(g.photo)}</p></div>`;
+const photoImg = g => IMG[g.questions[0].no] ? `<img class="scene p1photo" src="${IMG[g.questions[0].no]}" alt="Part 1 照片 ${g.questions[0].no}">` : `<div class="photo-ph"><div class="lbl">📷 照片加载失败</div></div>`;
+const photoHTML = photoImg;
+const photoReviewHTML = g => `${photoImg(g)}${g.photo ? `<div class="photo-ph refdesc"><div class="lbl">参考描述</div><p>${esc(g.photo)}</p></div>` : ""}`;
 const gfxHTML = g => g.graphic ? tableHTML(g.graphic.rows, g.graphic.title) : "";
 
 async function playGroup(i) {
@@ -528,7 +538,7 @@ function renderResult(aid) {
 /* ---------- review / notebook shared ---------- */
 function scriptHTML(g) { return g.script.map(x => `<p><span class="spk">${esc(x.spk)}:</span> ${esc(x.text)}</p>`).join(""); }
 function ctxHTML(g, aid) {
-  if (g.sec === "L") return `${g.part === 1 ? photoHTML(g) : ""}${gfxHTML(g)}
+  if (g.sec === "L") return `${g.part === 1 ? photoReviewHTML(g) : ""}${gfxHTML(g)}
     <details ${g.part <= 2 ? "open" : ""}><summary>听力原文 & 重听音频</summary><div class="aud" data-p="${g.audio[0]}" data-i="${g.audio[1]}"><button class="btn small ghost loadA">▶ 加载音频</button></div><div class="script">${scriptHTML(g)}</div></details>`;
   return `<details><summary>查看文章（${g.questions[0].no}${g.questions.length > 1 ? "–" + g.questions.at(-1).no : ""}）</summary>${docsHTML(g)}</details>`;
 }
