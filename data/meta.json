@@ -1,0 +1,29 @@
+{
+ "v": 1,
+ "kdf": "PBKDF2-SHA256",
+ "iter": 600000,
+ "salt": "Nis/icdsAY+Z6qGK1f5YkQ==",
+ "cipher": "AES-256-GCM (12-byte IV prefix)",
+ "files": {
+  "a1": {
+   "file": "a1.bin",
+   "size": 1377796
+  },
+  "a2": {
+   "file": "a2.bin",
+   "size": 3566184
+  },
+  "a3": {
+   "file": "a3.bin",
+   "size": 7067592
+  },
+  "a4": {
+   "file": "a4.bin",
+   "size": 5375604
+  },
+  "data": {
+   "file": "t1.bin",
+   "size": 145079
+  }
+ }
+}
