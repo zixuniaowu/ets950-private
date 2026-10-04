@@ -2,7 +2,7 @@
  "v": 1,
  "kdf": "PBKDF2-SHA256",
  "iter": 600000,
- "salt": "aF7G2vBvbHoR5Nkgz2yhfw==",
+ "salt": "/JPIKFTk7d1CNdDPosoTQQ==",
  "cipher": "AES-256-GCM (12-byte IV prefix)",
  "files": {
   "a1": {
@@ -23,11 +23,11 @@
   },
   "p1img": {
    "file": "p1img.bin",
-   "size": 430869
+   "size": 1604220
   },
   "data": {
    "file": "t1.bin",
-   "size": 145269
+   "size": 145278
   }
  }
 }
