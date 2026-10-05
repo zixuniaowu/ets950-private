@@ -14,7 +14,7 @@ const vName = v => pick(v, "name"), vDesc = v => pick(v, "desc");
 function bindLang(rerender) {
   document.querySelectorAll(".langsw [data-lang]").forEach(b => b.onclick = e => { e.preventDefault(); if (b.dataset.lang !== window.I18N.lang) { window.I18N.set(b.dataset.lang); rerender(); } });
 }
-const HKEY = "ets950.history.v1", NKEY = "ets950.notebook.v1", PWKEY = "ets950.pw", TKEY = "ets950.tid", VKEY = "ets950.vol";
+const HKEY = "ets950.history.v1", NKEY = "ets950.notebook.v1", PWKEY = "ets950.pw", PWMKEY = "ets950.pwMonth", TKEY = "ets950.tid", VKEY = "ets950.vol";
 const SHELL = window.examShell || null;   // set by the Electron preload (desktop exam app)
 let SIM = !!SHELL;                          // IP-online style full-screen simulation mode
 
@@ -75,11 +75,19 @@ const loadNote = () => loadJ(NKEY, {});
 const saveNote = n => localStorage.setItem(NKEY, JSON.stringify(n));
 
 /* ---------- crypto ---------- */
-let META = null, KEY = null, DATA = null, TESTS = {}, TID = null;
+let META = null, KEY = null, DATA = null, TESTS = {}, TID = null, UNLOCK_YM = null;
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-async function deriveKey(pw) {
-  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey({name: "PBKDF2", hash: "SHA-256", salt: b64(META.salt), iterations: META.iter}, base, {name: "AES-GCM", length: 256}, false, ["decrypt"]);
+/** Current YYYY-MM in Asia/Tokyo (exam password month). */
+function tokyoYM(d = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit" }).formatToParts(d);
+  return parts.find(p => p.type === "year").value + "-" + parts.find(p => p.type === "month").value;
+}
+function clearSavedPw() { sessionStorage.removeItem(PWKEY); sessionStorage.removeItem(PWMKEY); }
+function savePwSession(pw, ym) { sessionStorage.setItem(PWKEY, pw); sessionStorage.setItem(PWMKEY, ym); }
+function loadSavedPw() {
+  const pw = sessionStorage.getItem(PWKEY), ym = sessionStorage.getItem(PWMKEY), cur = tokyoYM();
+  if (!pw || !ym || ym !== cur) { clearSavedPw(); return null; }
+  return pw;
 }
 async function fetchBin(file, onprog) {
   const r = await fetch("data/" + file, {cache: "no-cache"});
@@ -92,19 +100,38 @@ async function fetchBin(file, onprog) {
 async function decryptBin(key, bytes) {
   return crypto.subtle.decrypt({name: "AES-GCM", iv: bytes.subarray(0, 12)}, key, bytes.subarray(12));
 }
+async function unwrapDataKey(pw, ym) {
+  const w = META.wraps && META.wraps[ym];
+  if (!w) throw new Error("NO_MONTH");
+  const salt = b64(w.salt), wrap = b64(w.wrap);
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+  const wk = await crypto.subtle.deriveKey(
+    {name: "PBKDF2", hash: "SHA-256", salt, iterations: META.iter},
+    base, {name: "AES-GCM", length: 256}, false, ["decrypt"]
+  );
+  let raw;
+  try { raw = await crypto.subtle.decrypt({name: "AES-GCM", iv: wrap.subarray(0, 12)}, wk, wrap.subarray(12)); }
+  catch { throw new Error("BADPW"); }
+  return crypto.subtle.importKey("raw", raw, {name: "AES-GCM"}, false, ["decrypt"]);
+}
 function metaTests() { return META.tests || [{id: "t1", label: "Test 1", files: META.files}]; }
 async function unlock(pw) {
   if (!META) { const r = await fetch("data/meta.json", {cache: "no-cache"}); META = await r.json(); }
-  const key = await deriveKey(pw), out = {};
-  for (const t of metaTests()) {
-    const bytes = await fetchBin(t.files.data.file);
+  const ym = tokyoYM();
+  if (META.validTo && ym > META.validTo) throw new Error("EXPIRED");
+  if (META.validFrom && ym < META.validFrom) throw new Error("EXPIRED");
+  if (!META.wraps || !META.wraps[ym]) throw new Error("EXPIRED");
+  const key = await unwrapDataKey(pw, ym);
+  const out = {};
+  for (const tt of metaTests()) {
+    const bytes = await fetchBin(tt.files.data.file);
     let plain;
     try { plain = await decryptBin(key, bytes); } catch { throw new Error("BADPW"); }
     const d = JSON.parse(new TextDecoder().decode(plain));
-    Object.assign(d, {_id: t.id, _label: t.label, _files: t.files, _urls: {}, _pending: {}, _img: {}});
-    out[t.id] = d;
+    Object.assign(d, {_id: tt.id, _label: tt.label, _files: tt.files, _urls: {}, _pending: {}, _img: {}});
+    out[tt.id] = d;
   }
-  TESTS = out; KEY = key;
+  TESTS = out; KEY = key; UNLOCK_YM = ym;
   for (const d of Object.values(TESTS)) await loadImages(d);
   const last = localStorage.getItem(TKEY);
   selectTest(TESTS[last] ? last : metaTests()[0].id);
@@ -204,11 +231,12 @@ function renderLock(msg = "") {
     btn.disabled = true; btn.textContent = t("verifying"); $("#err").textContent = "";
     try {
       await unlock(pw);
-      if ($("#remember") && $("#remember").checked) sessionStorage.setItem(PWKEY, pw); else sessionStorage.removeItem(PWKEY);
+      if ($("#remember") && $("#remember").checked) savePwSession(pw, UNLOCK_YM); else clearSavedPw();
       route();
     } catch (err) {
       btn.disabled = false; btn.textContent = SIM ? "SUBMIT" : t("unlockBtn");
-      $("#err").textContent = err.message === "BADPW" ? t("badPw") : t("loadFail");
+      const code = err && err.message;
+      $("#err").textContent = code === "EXPIRED" ? t("pwExpired") : (code === "BADPW" || code === "NO_MONTH") ? t("badPwMonth") : t("loadFail");
       $("#pw").select();
     }
   };
@@ -260,7 +288,7 @@ function renderHome() {
   const c = $("#clearHist"); if (c) c.onclick = e => { e.preventDefault(); if (confirm(t("confirmClearHist"))) { localStorage.removeItem(HKEY); renderHome(); } };
   bindTestPicker(renderHome);
   $("#simEnter").onclick = () => enterSim();
-  $("#lockNow").onclick = e => { e.preventDefault(); sessionStorage.removeItem(PWKEY); location.hash = "#/"; location.reload(); };
+  $("#lockNow").onclick = e => { e.preventDefault(); clearSavedPw(); location.hash = "#/"; location.reload(); };
 }
 
 /* ---------- intro ---------- */
@@ -1069,15 +1097,20 @@ function simCongrats(aid) {
   $("#simNext").onclick = () => { simBar(null); go("#/result/" + aid); };
 }
 
-if (DEBUG || FAST) window.__t = {get S() { return S; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro};   // test hook
+if (DEBUG || FAST) window.__t = {get S() { return S; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, unlock, clearSavedPw};   // test hook
 /* ---------- boot ---------- */
 (async () => {
   if (!SIM && sessionStorage.getItem("ets950.sim") === "1") SIM = true;
   if (SIM) document.body.classList.add("sim");
-  const pw = SHELL ? null : sessionStorage.getItem(PWKEY);
+  const pw = SHELL ? null : loadSavedPw();
   if (pw) {
     app.innerHTML = `<div class="card gate"><p>${t("decrypting")}</p></div>`;
-    try { await unlock(pw); } catch (e) { sessionStorage.removeItem(PWKEY); return renderLock(e.message === "BADPW" ? t("savedPwBad") : ""); }
+    try { await unlock(pw); }
+    catch (e) {
+      clearSavedPw();
+      const code = e && e.message;
+      return renderLock(code === "EXPIRED" ? t("pwExpired") : (code === "BADPW" || code === "NO_MONTH") ? t("savedPwBad") : "");
+    }
   }
   route();
 })();
