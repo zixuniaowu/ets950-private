@@ -3,3 +3,4 @@
 *.mp4
 *.json.plain
 node_modules/
+!audio/soundcheck.mp3

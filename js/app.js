@@ -12,7 +12,9 @@ const PART_DIR_ZH = {
   3: "听两人或三人的对话，回答 3 个问题。问题和选项显示在屏幕上，可边听边作答。",
   4: "听一段独白（广播、留言、讲话等），回答 3 个问题。可边听边作答。"
 };
-const HKEY = "ets950.history.v1", NKEY = "ets950.notebook.v1", PWKEY = "ets950.pw";
+const HKEY = "ets950.history.v1", NKEY = "ets950.notebook.v1", PWKEY = "ets950.pw", TKEY = "ets950.tid", VKEY = "ets950.vol";
+const SHELL = window.examShell || null;   // set by the Electron preload (desktop exam app)
+let SIM = !!SHELL;                          // IP-online style full-screen simulation mode
 
 /* ---------- approximate score conversion (NOT official) ---------- */
 const CONV = {
@@ -66,7 +68,7 @@ const loadNote = () => loadJ(NKEY, {});
 const saveNote = n => localStorage.setItem(NKEY, JSON.stringify(n));
 
 /* ---------- crypto ---------- */
-let META = null, KEY = null, DATA = null;
+let META = null, KEY = null, DATA = null, TESTS = {}, TID = null;
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function deriveKey(pw) {
   const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
@@ -83,36 +85,47 @@ async function fetchBin(file, onprog) {
 async function decryptBin(key, bytes) {
   return crypto.subtle.decrypt({name: "AES-GCM", iv: bytes.subarray(0, 12)}, key, bytes.subarray(12));
 }
+function metaTests() { return META.tests || [{id: "t1", label: "Test 1", files: META.files}]; }
 async function unlock(pw) {
   if (!META) { const r = await fetch("data/meta.json", {cache: "no-cache"}); META = await r.json(); }
-  const key = await deriveKey(pw);
-  const bytes = await fetchBin(META.files.data.file);
-  let plain;
-  try { plain = await decryptBin(key, bytes); } catch { throw new Error("BADPW"); }
-  DATA = JSON.parse(new TextDecoder().decode(plain)); KEY = key;
-  await loadImages();
+  const key = await deriveKey(pw), out = {};
+  for (const t of metaTests()) {
+    const bytes = await fetchBin(t.files.data.file);
+    let plain;
+    try { plain = await decryptBin(key, bytes); } catch { throw new Error("BADPW"); }
+    const d = JSON.parse(new TextDecoder().decode(plain));
+    Object.assign(d, {_id: t.id, _label: t.label, _files: t.files, _urls: {}, _pending: {}, _img: {}});
+    out[t.id] = d;
+  }
+  TESTS = out; KEY = key;
+  for (const d of Object.values(TESTS)) await loadImages(d);
+  const last = localStorage.getItem(TKEY);
+  selectTest(TESTS[last] ? last : metaTests()[0].id);
 }
-/* Part 1 photos: one encrypted blob → Blob URL per photo */
-const IMG = {};
-async function loadImages() {
-  if (!META.files.p1img || !DATA.p1img) return;
-  const ab = await decryptBin(KEY, await fetchBin(META.files.p1img.file));
-  for (const [n, c] of Object.entries(DATA.p1img)) IMG[n] = URL.createObjectURL(new Blob([new Uint8Array(ab, c.off, c.len)], {type: "image/jpeg"}));
+function selectTest(id) { TID = id; DATA = TESTS[id]; localStorage.setItem(TKEY, id); }
+/* Part 1 photos: one encrypted blob per test → Blob URL per photo */
+async function loadImages(d) {
+  if (!d._files.p1img || !d.p1img) return;
+  const ab = await decryptBin(KEY, await fetchBin(d._files.p1img.file));
+  for (const [n, c] of Object.entries(d.p1img)) d._img[n] = URL.createObjectURL(new Blob([new Uint8Array(ab, c.off, c.len)], {type: "image/jpeg"}));
 }
-/* audio: one encrypted blob per Part → decrypted → one Blob URL per clip */
+/* audio: one encrypted blob per Part (per test) → decrypted → one Blob URL per clip */
 const AudioStore = {
-  urls: {}, pending: {},
   ensure(p, onprog) {
-    if (this.urls[p]) return Promise.resolve();
-    if (!this.pending[p]) this.pending[p] = (async () => {
-      const bytes = await fetchBin(META.files["a" + p].file, onprog);
+    const d = DATA;
+    if (d._urls[p]) return Promise.resolve();
+    if (!d._pending[p]) d._pending[p] = (async () => {
+      const bytes = await fetchBin(d._files["a" + p].file, onprog);
       const ab = await decryptBin(KEY, bytes);
-      this.urls[p] = DATA.audio[p].map(c => URL.createObjectURL(new Blob([new Uint8Array(ab, c.off, c.len)], {type: "audio/mpeg"})));
-    })().catch(e => { delete this.pending[p]; throw e; });
-    return this.pending[p];
+      d._urls[p] = d.audio[p].map(c => URL.createObjectURL(new Blob([new Uint8Array(ab, c.off, c.len)], {type: "audio/mpeg"})));
+    })().catch(e => { delete d._pending[p]; throw e; });
+    return d._pending[p];
   },
-  url(a) { return this.urls[a[0]] && this.urls[a[0]][a[1]]; }
+  url(a) { return DATA._urls[a[0]] && DATA._urls[a[0]][a[1]]; }
 };
+/* wrong-answer notebook keys: Test 1 keeps bare question numbers (backward compatible), other tests use "t2:105" */
+const nkey = no => TID === "t1" ? String(no) : `${TID}:${no}`;
+const noteNo = k => { const m = String(k).match(/^(?:(\w+):)?(\d+)$/); return m && (m[1] || "t1") === TID ? +m[2] : null; };
 
 /* ---------- test variants ---------- */
 function buildVariant(vid) {
@@ -137,7 +150,7 @@ function allQuestions(test) {
 function groupOfQ(no) { for (const g of Object.values(DATA.groups)) for (const q of g.questions) if (q.no === no) return {g, q}; return null; }
 
 let T = null, S = null;
-function setHud(on) { hud.classList.toggle("hidden", !on); $("#foot").classList.toggle("hidden", on); }
+function setHud(on) { hud.classList.toggle("hidden", !on); $("#foot").classList.toggle("hidden", on || SIM); $("#hudQ").textContent = ""; }
 function showOverlay(html, center = true) { overlay.innerHTML = `<div class="sheet">${html}</div>`; overlay.classList.toggle("center", center); overlay.classList.remove("hidden"); }
 function hideOverlay() { overlay.classList.add("hidden"); overlay.innerHTML = ""; }
 overlay.addEventListener("click", e => { if (e.target === overlay && overlay.dataset.dismiss === "1") hideOverlay(); });
@@ -156,6 +169,7 @@ async function route() {
   if (h.startsWith("#/result/")) return renderResult(h.split("/")[2]);
   if (h.startsWith("#/review/")) return renderReview(h.split("/")[2]);
   if (h.startsWith("#/notebook")) return renderNotebook();
+  if (h.startsWith("#/history")) return renderHistoryPage();
   if (h.startsWith("#/exam")) { if (!S) return go("#/"); return; }
   renderHome();
 }
@@ -163,22 +177,29 @@ async function route() {
 /* ---------- lock screen ---------- */
 function renderLock(msg = "") {
   setHud(false);
-  app.innerHTML = `<div class="card lock"><h1>🔒 请输入密码</h1>
+  if (SIM) document.body.classList.add("sim");
+  app.innerHTML = SIM ? `<div class="simpanel lock"><h1>TOEIC® Listening &amp; Reading Test <small>IP 在线考试仿真</small></h1>
+   <p>Enter your Authorization Code. 请输入密码（相当于 Authorization Code）。</p>
+   <form id="lockForm"><input type="password" id="pw" autocomplete="current-password" placeholder="Authorization Code / 密码" required>
+   ${SHELL ? "" : `<label><input type="checkbox" id="remember"> 记住（仅本次会话）</label>`}
+   <div class="err" id="err">${esc(msg)}</div>
+   <button class="btn block" id="unlockBtn" type="submit">SUBMIT</button></form>${SHELL ? `<p style="margin-top:18px"><button class="btn ghost small" type="button" id="lockExit">退出 Exit</button></p>` : ""}</div>` : `<div class="card lock"><h1>🔒 请输入密码</h1>
    <p class="muted">本站内容（题目、原文、解析、音频）均已加密，输入正确密码后在本机浏览器内解密。</p>
    <form id="lockForm"><input type="password" id="pw" autocomplete="current-password" placeholder="密码" required>
    <label><input type="checkbox" id="remember"> 记住（仅在本次浏览器会话中有效，关闭标签页后失效）</label>
    <div class="err" id="err">${esc(msg)}</div>
    <button class="btn block" id="unlockBtn" type="submit">解锁</button></form></div>`;
+  const le = $("#lockExit"); if (le) le.onclick = () => simConfirmExit();
   $("#lockForm").onsubmit = async e => {
     e.preventDefault();
     const pw = $("#pw").value, btn = $("#unlockBtn");
-    btn.disabled = true; btn.textContent = "正在解密…"; $("#err").textContent = "";
+    btn.disabled = true; btn.textContent = "正在解密… Verifying"; $("#err").textContent = "";
     try {
       await unlock(pw);
-      if ($("#remember").checked) sessionStorage.setItem(PWKEY, pw); else sessionStorage.removeItem(PWKEY);
+      if ($("#remember") && $("#remember").checked) sessionStorage.setItem(PWKEY, pw); else sessionStorage.removeItem(PWKEY);
       route();
     } catch (err) {
-      btn.disabled = false; btn.textContent = "解锁";
+      btn.disabled = false; btn.textContent = SIM ? "SUBMIT" : "解锁";
       $("#err").textContent = err.message === "BADPW" ? "密码错误，请重新输入。" : "加载失败，请检查网络后重试。";
       $("#pw").select();
     }
@@ -208,11 +229,15 @@ function historyCard() {
 }
 function renderHome() {
   setHud(false); S = null;
-  const nb = Object.values(loadNote()).filter(x => !x.ok).length;
+  if (SIM) return simHome();
+  const nbo = loadNote(), nb = Object.keys(nbo).filter(k => !nbo[k].ok && noteNo(k) !== null).length;
   const V = DATA.variants;
   app.innerHTML = `
   <div class="card"><h1>${esc(DATA.title)}</h1>
   <p>全真 TOEIC L&amp;R 格式：听力 100 题（约 48 分钟，音频连续播放、只播一次），阅读 100 题（75 分钟）。听力音频为语音合成（TTS）重新朗读。</p></div>
+  ${testPicker()}
+  <div class="card"><h2>🖥 全屏仿真模式</h2><p class="muted">仿照 IP 在线考试界面：全屏、音量测试、注意事项、每题一页（Back / Next / Review）、右上角倒计时。iPhone 不支持网页全屏时会改为铺满屏幕的布局，并保持屏幕常亮。</p>
+   <button class="btn block" id="simEnter">进入全屏仿真模式</button></div>
   <div class="card modes"><h2>📝 选择模式</h2>
   ${Object.keys(V).map(k => `<div class="card"><h3 style="margin-top:0">${esc(V[k].name)}</h3><p class="muted">${esc(V[k].desc)}</p><a class="btn block" href="#/intro/${k}">开始</a></div>`).join("")}</div>
   <div class="card"><h2>📒 错题本</h2><p>当前错题 <b>${nb}</b> 题（保存在本机浏览器）。</p><a class="btn ghost block" href="#/notebook">打开错题本</a></div>
@@ -220,6 +245,8 @@ function renderHome() {
   <div class="card"><details><summary>说明</summary><ul class="rules">${DATA.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></details>
   <p><a href="#" id="lockNow">🔒 锁定（清除本次会话中记住的密码）</a></p></div>`;
   const c = $("#clearHist"); if (c) c.onclick = e => { e.preventDefault(); if (confirm("确定清除所有成绩记录吗？")) { localStorage.removeItem(HKEY); renderHome(); } };
+  bindTestPicker(renderHome);
+  $("#simEnter").onclick = () => enterSim();
   $("#lockNow").onclick = e => { e.preventDefault(); sessionStorage.removeItem(PWKEY); location.hash = "#/"; location.reload(); };
 }
 
@@ -262,7 +289,8 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && S 
 
 /* ---------- audio engine (Web Audio, unlocked by one tap for iOS) ---------- */
 const AudioEng = {
-  ctx: null, src: null, buffers: {}, startAt: 0, html: null,
+  ctx: null, src: null, buffers: {}, startAt: 0, html: null, gain: null, vol: Math.min(1, Math.max(0, +(localStorage.getItem(VKEY) ?? 1))),
+  setVolume(v) { this.vol = v; localStorage.setItem(VKEY, v); if (this.gain) this.gain.gain.value = v; if (this.html) this.html.volume = v; },
   unlock() {
     try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
     requestWakeLock();
@@ -271,6 +299,7 @@ const AudioEng = {
       this.ctx = new AC();
       const b = this.ctx.createBuffer(1, 1, 22050), s = this.ctx.createBufferSource();
       s.buffer = b; s.connect(this.ctx.destination); s.start(0);
+      this.gain = this.ctx.createGain(); this.gain.gain.value = this.vol; this.gain.connect(this.ctx.destination);
     }
     if (this.ctx && this.ctx.state !== "running") this.ctx.resume();
     if (!this.ctx) { this.html = new Audio(); this.html.play().catch(() => {}); }
@@ -288,11 +317,11 @@ const AudioEng = {
     this.stop();
     if (this.ctx) {
       const buf = await this.load(url);
-      const s = this.ctx.createBufferSource(); s.buffer = buf; s.connect(this.ctx.destination);
+      const s = this.ctx.createBufferSource(); s.buffer = buf; s.connect(this.gain || this.ctx.destination);
       s.onended = () => { if (this.src === s) { this.src = null; onended(); } };
       this.src = s; this.startAt = this.ctx.currentTime; s.start(0);
     } else {
-      const a = this.html || new Audio(); this.html = a; a.src = url; a.onended = onended; await a.play();
+      const a = this.html || new Audio(); this.html = a; a.volume = this.vol; a.src = url; a.onended = onended; await a.play();
       this.startAt = performance.now() / 1000;
     }
   },
@@ -310,7 +339,9 @@ document.addEventListener("visibilitychange", () => {
 /* ---------- exam ---------- */
 function startExam(test) {
   T = test;
-  S = {vid: test.id, answers: {}, flags: {}, phase: "L", li: 0, done: false, started: Date.now(), tick: null};
+  S = {vid: test.id, answers: {}, flags: {}, phase: "L", li: 0, done: false, started: Date.now(), tick: null, sim: SIM};
+  if (SHELL) SHELL.setExamActive(true);
+  simBar(S.sim ? "" : null);
   const L = test.sections.find(s => s.id === "L");
   S.lgroups = L ? L.units.flatMap(u => u.groups.map(g => Object.assign(g, {_unit: u}))) : [];
   S.lTotal = S.lgroups.reduce((a, g) => a + g.duration, 0);
@@ -323,18 +354,23 @@ function startExam(test) {
   hudSection.textContent = "听力 Listening";
   hudTimer.textContent = fmt(S.lTotal);
   const parts = [...new Set(S.lgroups.map(g => g.audio[0]))];
-  app.innerHTML = `<div class="card gate"><div class="big">🎧</div><h2>听力部分即将开始</h2>
+  app.innerHTML = S.sim ? `<div class="simpanel"><h2>Listening Test <small>听力部分</small></h2>
+   <p>In the Listening test, you will hear a variety of statements, questions, conversations, and talks recorded in English, and answer questions about them. Each recording is played only once.</p>
+   <p class="muted">听力共 ${S.lCount} 题，约 ${Math.round(S.lTotal / 60)} 分钟。点击 Next 后音频自动连续播放，不能暂停、不能返回；全部播完后自动进入阅读部分。</p>
+   <p id="prep">正在准备音频 Preparing audio… <b id="prepPct">0%</b></p>
+   <button class="btn block" id="gateBtn" disabled>Please wait 请稍候…</button></div>` :
+   `<div class="card gate"><div class="big">🎧</div><h2>听力部分即将开始</h2>
    <p class="muted">共 ${S.lCount} 题，约 ${Math.round(S.lTotal / 60)} 分钟。点击下方按钮后音频会自动连续播放，不能暂停。</p>
    <p id="prep">正在下载并解密音频… <b id="prepPct">0%</b></p>
    <button class="btn block" id="gateBtn" disabled>请稍候…</button></div>`;
-  const sizes = parts.map(p => META.files["a" + p].size), tot = sizes.reduce((a, b) => a + b, 0), prog = parts.map(() => 0);
+  const sizes = parts.map(p => DATA._files["a" + p].size), tot = sizes.reduce((a, b) => a + b, 0), prog = parts.map(() => 0);
   const upd = () => { const e = $("#prepPct"); if (e) e.textContent = Math.round(prog.reduce((a, x, i) => a + x * sizes[i], 0) / tot * 100) + "%"; };
   (async () => {
     try {
       for (let i = 0; i < parts.length; i++) await AudioStore.ensure(parts[i], f => { prog[i] = f; upd(); });
       if (!S || S.phase !== "L") return;
       $("#prep").textContent = "✅ 音频已准备好";
-      const b = $("#gateBtn"); b.disabled = false; b.textContent = "点击开始听力";
+      const b = $("#gateBtn"); b.disabled = false; b.textContent = S.sim ? "Next 开始" : "点击开始听力";
       b.onclick = () => { AudioEng.unlock(); playGroup(0); S.tick = setInterval(tick, 250); };
     } catch (e) {
       $("#prep").innerHTML = `<span style="color:#dc2626">音频加载失败，请检查网络后返回重试。</span>`;
@@ -342,7 +378,7 @@ function startExam(test) {
   })();
 }
 function releaseWake() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } hudTimer.classList.remove("warn"); }
-function abortExam() { releaseWake(); if (!S) return; AudioEng.stop(); AudioEng.prune([]); clearInterval(S.tick); S = null; hideOverlay(); setHud(false); }
+function abortExam() { releaseWake(); simBar(null); if (SHELL) SHELL.setExamActive(false); if (!S) return; AudioEng.stop(); AudioEng.prune([]); clearInterval(S.tick); S = null; hideOverlay(); setHud(false); }
 
 function tick() {
   if (!S || S.done) return;
@@ -356,12 +392,17 @@ function tick() {
     hudTimer.textContent = fmt(left);
     hudTimer.classList.toggle("warn", left < 300);
     if (left <= 0) {
-      if (S.ru < S.runits.length - 1) { alert(`${S.runits[S.ru].name} 时间到，自动进入下一部分。`); startReadingUnit(S.ru + 1); }
-      else { alert("时间到，自动交卷。"); submit(); }
+      const msg = S.ru < S.runits.length - 1 ? `${S.runits[S.ru].name} 时间到，自动进入下一部分。Time is up for this unit.` : "时间到，自动交卷。Time is up. Your answers have been submitted.";
+      if (S.ru < S.runits.length - 1) startReadingUnit(S.ru + 1); else submit();
+      timeUpNote(msg);
     }
   }
 }
 
+function timeUpNote(msg) {   // non-blocking (alert() would freeze the kiosk timer)
+  const n = document.createElement("div"); n.className = "toast"; n.textContent = "⏰ " + msg;
+  document.body.appendChild(n); setTimeout(() => n.remove(), 5000);
+}
 function optsHTML(q, showText, nopt) {
   const n = nopt || q.options.length;
   const cls = showText ? "opts" : `opts letters${n === 3 ? " three" : ""}`;
@@ -375,7 +416,7 @@ function bindOpts(root) {
     if (S.phase === "R") updatePaletteState();
   });
 }
-const photoImg = g => IMG[g.questions[0].no] ? `<img class="scene p1photo" src="${IMG[g.questions[0].no]}" alt="Part 1 照片 ${g.questions[0].no}">` : `<div class="photo-ph"><div class="lbl">📷 照片加载失败</div></div>`;
+const photoImg = g => DATA._img[g.questions[0].no] ? `<img class="scene p1photo" src="${DATA._img[g.questions[0].no]}" alt="Part 1 照片 ${g.questions[0].no}">` : `<div class="photo-ph"><div class="lbl">📷 照片加载失败</div></div>`;
 const photoHTML = photoImg;
 const photoReviewHTML = g => `${photoImg(g)}${g.photo ? `<div class="photo-ph refdesc"><div class="lbl">参考描述</div><p>${esc(g.photo)}</p></div>` : ""}`;
 const gfxHTML = g => g.graphic ? tableHTML(g.graphic.rows, g.graphic.title) : "";
@@ -393,7 +434,11 @@ async function playGroup(i) {
   if (g.part === 1) body = `${photoHTML(g)}<div class="qblock"><div class="qtext"><span class="qno">${q0.no}.</span>选出最符合照片的描述</div>${optsHTML(q0, false, 4)}</div>`;
   else if (g.part === 2) body = `<div class="qblock"><div class="qtext"><span class="qno">${q0.no}.</span>选出最恰当的回答</div>${optsHTML(q0, false, 3)}</div>`;
   else body = gfxHTML(g) + g.questions.map(q => `<div class="qblock"><div class="qtext"><span class="qno">${q.no}.</span>${esc(q.q)}</div>${optsHTML(q, true)}</div>`).join("");
-  app.innerHTML = `<div class="progress"><i style="width:${done / S.lCount * 100}%"></i></div>
+  if (S.sim) { $("#hudQ").textContent = `Question ${q0.no}${g.questions.length > 1 ? "–" + g.questions.at(-1).no : ""}`; simBar(`<span class="muted">Listening · ${PART_ZH[g.part]} · 音频自动播放 Audio plays automatically</span>`); }
+  app.innerHTML = S.sim ? `<div class="simpanel listen">${firstOfPart ? `<div class="dirnote">${PART_DIR_ZH[g.part]}</div>` : ""}
+   <div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>Now playing… 正在播放（只播放一次）</span></div>
+   ${g.part === 2 ? `<div class="qtext"><span class="qno">${q0.no}.</span>Mark your answer on your answer sheet.</div>${optsHTML(q0, false, 3)}` : body}</div>
+   ${DEBUG ? `<button class="btn ghost small" id="dbgSkip">[debug] 跳过本段音频</button>` : ""}` : `<div class="progress"><i style="width:${done / S.lCount * 100}%"></i></div>
    <div class="partbar"><span>${PART_ZH[g.part]}</span><span>${q0.no}${g.questions.length > 1 ? "–" + g.questions.at(-1).no : ""}</span></div>
    ${firstOfPart ? `<div class="dirnote">${PART_DIR_ZH[g.part]}</div>` : ""}
    <div class="card"><div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>正在播放…（只播放一次）</span></div>${body}</div>
@@ -414,6 +459,7 @@ async function playGroup(i) {
 
 function startReading() {
   AudioEng.stop();
+  if (S.sim) return simReadingIntro();
   S.phase = "R-gate";
   hudSection.textContent = "阅读 Reading";
   hudTimer.textContent = fmt(S.runits[0].time);
@@ -428,6 +474,7 @@ function startReadingUnit(ru) {
   const u = S.runits[ru];
   S.rDeadline = Date.now() + u.time * 1000; hudTimer.textContent = fmt(u.time);
   hudSection.textContent = `阅读 · ${u.name}`;
+  if (S.sim) return simUnitDir();
   renderReadingGroup();
 }
 const lastUnit = () => S.ru === S.runits.length - 1;
@@ -496,15 +543,17 @@ function submit() {
     const ok = S.answers[q.no] === q.answer;
     parts[g.part] = parts[g.part] || {c: 0, n: 0}; parts[g.part].n++; if (ok) parts[g.part].c++;
     if (s.id === "L") { lN++; if (ok) l++; } else { rN++; if (ok) r++; }
-    if (!ok) { const e = nb[q.no] || {n: 0}; e.n++; e.last = now; e.ok = false; nb[q.no] = e; }
+    if (!ok) { const k = nkey(q.no), e = nb[k] || {n: 0}; e.n++; e.last = now; e.ok = false; nb[k] = e; }
   }
   saveNote(nb);
   const lScore = scaled("L", l, lN), rScore = scaled("R", r, rN);
-  const att = {id: String(Date.now()), vid: T.id, modeName: T.name, date: now,
+  const att = {id: String(Date.now()), tid: TID, testLabel: DATA._label, vid: T.id, modeName: T.name, date: now,
     lRaw: l, lN, rRaw: r, rN, lScore, rScore, total: lScore + rScore, parts, answers: S.answers, flags: S.flags,
     minutes: Math.round((Date.now() - S.started) / 60000)};
   const h = loadHist(); h.push(att); saveHist(h);
-  S = null; setHud(false);
+  const wasSim = S.sim; S = null; setHud(false); simBar(null);
+  if (SHELL) SHELL.setExamActive(false);
+  if (wasSim) return simCongrats(att.id);
   go("#/result/" + att.id);
 }
 
@@ -514,6 +563,7 @@ function renderResult(aid) {
   setHud(false);
   const a = loadHist().find(x => x.id === aid);
   if (!a) return renderHome();
+  if (a.tid && TESTS[a.tid] && a.tid !== TID) selectTest(a.tid);
   const parts = Object.keys(a.parts).sort().map(p => {
     const {c, n} = a.parts[p]; const pct = c / n;
     return `<div class="bar"><span>${PART_ZH[p]}</span><span class="track"><i style="width:${pct * 100}%;background:${barColor(pct)}"></i></span><span>${c}/${n} · ${Math.round(pct * 100)}%</span></div>`;
@@ -563,6 +613,7 @@ function qCard(q, g, mine, extraTop = "", extraBottom = "") {
 function renderReview(aid, filter = "all") {
   setHud(false);
   const a = loadHist().find(x => x.id === aid);
+  if (a && a.tid && TESTS[a.tid] && a.tid !== TID) selectTest(a.tid);
   if (!a || !DATA.variants[a.vid]) return renderHome();
   const test = buildVariant(a.vid);
   const qs = allQuestions(test);
@@ -594,10 +645,10 @@ function renderReview(aid, filter = "all") {
 function renderNotebook(filter = "all") {
   setHud(false);
   const nb = loadNote();
-  const items = Object.keys(nb).map(Number).filter(n => !nb[n].ok).sort((x, y) => x - y)
-    .filter(n => filter === "all" || (filter === "L" ? n <= 100 : n > 100));
-  const all = Object.keys(nb).filter(n => !nb[n].ok);
-  let html = `<div class="card"><h1>📒 错题本</h1>
+  const mine = Object.keys(nb).filter(k => !nb[k].ok && noteNo(k) !== null);   // current test only
+  const all = mine.map(noteNo);
+  const items = all.slice().sort((x, y) => x - y).filter(n => filter === "all" || (filter === "L" ? n <= 100 : n > 100));
+  let html = `<div class="card"><h1>📒 错题本 <small class="muted">${esc(DATA._label)}</small></h1>
    <p class="muted">考试中答错或未作答的题会自动加入（只保存题号和次数，在本机 localStorage）。复习后点“已掌握”移出。</p>
    <div class="tabs"><button data-f="all" class="${filter === "all" ? "on" : ""}">全部 ${all.length}</button>
    <button data-f="L" class="${filter === "L" ? "on" : ""}">听力 ${all.filter(n => +n <= 100).length}</button>
@@ -608,20 +659,220 @@ function renderNotebook(filter = "all") {
     const f = groupOfQ(n); if (!f) continue;
     const {g, q} = f;
     const ctx = (g.part === 5) ? "" : ctxHTML(g);
-    html += `<div class="card rv ng"><div class="qhead"><span class="tag">${PART_ZH[g.part]}</span><span class="status ng">错 ${nb[n].n} 次</span></div>
-      ${ctx}${qCard(q, g, undefined, "", `<p class="muted">正确答案：<b>${LET[q.answer]}</b> · 最近一次：${new Date(nb[n].last).toLocaleDateString("zh-CN")}</p>`)}
-      <button class="btn small" data-ok="${n}">✓ 已掌握</button></div>`;
+    const e = nb[nkey(n)];
+    html += `<div class="card rv ng"><div class="qhead"><span class="tag">${PART_ZH[g.part]}</span><span class="status ng">错 ${e.n} 次</span></div>
+      ${ctx}${qCard(q, g, undefined, "", `<p class="muted">正确答案：<b>${LET[q.answer]}</b> · 最近一次：${new Date(e.last).toLocaleDateString("zh-CN")}</p>`)}
+      <button class="btn small" data-ok="${nkey(n)}">✓ 已掌握</button></div>`;
   }
   app.innerHTML = html;
   bindAudioButtons(app);
   app.querySelectorAll(".tabs button").forEach(b => b.onclick = () => renderNotebook(b.dataset.f));
   app.querySelectorAll("[data-ok]").forEach(b => b.onclick = () => { const x = loadNote(); x[b.dataset.ok].ok = true; saveNote(x); b.closest(".card").remove(); });
-  const c = $("#nbClear"); if (c) c.onclick = () => { if (confirm("确定清空错题本吗？")) { localStorage.removeItem(NKEY); renderNotebook(filter); } };
+  const c = $("#nbClear"); if (c) c.onclick = () => { if (confirm("确定清空本套题的错题本吗？")) { const x = loadNote(); for (const k of Object.keys(x)) if (noteNo(k) !== null) delete x[k]; saveNote(x); renderNotebook(filter); } };
 }
 
+
+/* ---------- multi-test picker ---------- */
+function testPicker() {
+  const ids = Object.keys(TESTS); if (ids.length < 2) return "";
+  return `<div class="card"><h2>📚 选择试卷 Test</h2><div class="tabs">${ids.map(id => `<button data-tid="${id}" class="${id === TID ? "on" : ""}">${esc(TESTS[id]._label)}</button>`).join("")}</div></div>`;
+}
+function bindTestPicker(rerender) { app.querySelectorAll("[data-tid]").forEach(b => b.onclick = () => { selectTest(b.dataset.tid); rerender(); }); }
+function renderHistoryPage() {
+  setHud(false);
+  app.innerHTML = `${historyCard()}<div class="card"><a class="btn ghost" href="#/">‹ 返回 Back</a></div>`;
+  const c = $("#clearHist"); if (c) c.onclick = e => { e.preventDefault(); if (confirm("确定清除所有成绩记录吗？")) { localStorage.removeItem(HKEY); renderHistoryPage(); } };
+}
+
+/* ---------- IP-online style simulation (desktop exe + web 全屏仿真模式) ---------- */
+const simbarEl = $("#simbar");
+function simBar(html) {             // null = hide the bottom bar
+  if (html === null) { simbarEl.classList.add("hidden"); simbarEl.innerHTML = ""; return; }
+  simbarEl.classList.remove("hidden"); simbarEl.innerHTML = html;
+}
+function enterSim() {
+  SIM = true; sessionStorage.setItem("ets950.sim", "1");
+  document.body.classList.add("sim");
+  const el = document.documentElement, rq = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (rq && !SHELL) { try { const r = rq.call(el, {navigationUI: "hide"}); if (r && r.catch) r.catch(() => {}); } catch {} }
+  requestWakeLock();
+  go("#/");
+}
+function exitSim() {
+  SIM = false; sessionStorage.removeItem("ets950.sim"); document.body.classList.remove("sim"); simBar(null);
+  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
+  go("#/");
+}
+function simConfirmExit() {
+  const inExam = S && !S.done;
+  overlay.dataset.dismiss = "0";
+  showOverlay(`<h2>${inExam ? "确定要结束考试吗？" : "确定要退出吗？"}</h2><p class="muted">${inExam ? "End the test? 本次作答不会保存。" : "Exit the application?"}</p>
+   <div class="row"><button class="btn ghost" id="cxNo">${inExam ? "继续考试 Continue" : "取消 Cancel"}</button><button class="btn warn" id="cxYes">${inExam ? "结束考试 End Test" : "退出 Exit"}</button></div>`);
+  $("#cxNo").onclick = hideOverlay;
+  $("#cxYes").onclick = () => { hideOverlay(); abortExam(); if (SHELL) SHELL.quit(); else exitSim(); };
+}
+if (SHELL) {
+  SHELL.onCloseRequest(() => simConfirmExit());
+  document.addEventListener("contextmenu", e => e.preventDefault());
+  document.addEventListener("dragstart", e => e.preventDefault());
+}
+document.addEventListener("fullscreenchange", () => {
+  if (SIM && !SHELL && !document.fullscreenElement && S && !S.done) {
+    const t = document.createElement("button"); t.className = "btn small refs"; t.textContent = "⛶ 重新全屏";
+    t.onclick = () => { t.remove(); document.documentElement.requestFullscreen().catch(() => {}); }; document.body.appendChild(t);
+  }
+});
+/* header volume control */
+$("#volBtn").onclick = e => {
+  e.stopPropagation();
+  const pop = $("#volPop"); pop.classList.toggle("hidden");
+  $("#volRange").value = Math.round(AudioEng.vol * 100);
+};
+$("#volRange").oninput = e => AudioEng.setVolume(e.target.value / 100);
+document.addEventListener("click", e => { const pop = $("#volPop"); if (!pop.contains(e.target) && !e.target.closest("#volBtn")) pop.classList.add("hidden"); });
+
+function simHome() {
+  document.body.classList.add("sim"); setHud(false); simBar(null);
+  const nbo = loadNote(), nb = Object.keys(nbo).filter(k => !nbo[k].ok && noteNo(k) !== null).length;
+  app.innerHTML = `<div class="simpanel">
+   <h1>TOEIC® Listening &amp; Reading Test <small>IP 在线考试仿真 · ${esc(DATA.title)}</small></h1>
+   ${testPicker()}
+   <p>按 IP 在线考试流程：音量测试 → 注意事项 → 考试说明 → 选择模式 → 听力（自动播放）→ 阅读（右上角倒计时，Back / Next / Review）→ 成绩。</p>
+   <button class="btn block big" id="simStart">Start Test 开始考试</button>
+   <div class="row" style="margin-top:12px"><a class="btn ghost" href="#/notebook">📒 错题本 (${nb})</a><a class="btn ghost" href="#/history">📈 成绩记录 History</a></div>
+   <div class="row" style="margin-top:12px">${SHELL ? `<button class="btn ghost" id="simQuit">退出 Exit</button>` : `<button class="btn ghost" id="simLeave">退出仿真模式</button>`}</div></div>`;
+  bindTestPicker(simHome);
+  $("#simStart").onclick = () => { AudioEng.unlock(); simSound(); };
+  if ($("#simQuit")) $("#simQuit").onclick = () => simConfirmExit();
+  if ($("#simLeave")) $("#simLeave").onclick = () => exitSim();
+}
+function simSound() {
+  app.innerHTML = `<div class="simpanel"><h2>Testing the Volume <small>音量测试</small></h2>
+   <p>Put on your headphones. You will hear a sample recording. Adjust the volume until you can hear it clearly, then click <b>Next</b>.</p>
+   <p class="muted">请戴上耳机。正在播放测试音，请用下方滑块（或右上角 Volume）调到合适音量，然后点击 Next。</p>
+   <div class="volrow">🔈 <input type="range" id="sndVol" min="0" max="100" value="${Math.round(AudioEng.vol * 100)}"> 🔊 <b id="sndPct">${Math.round(AudioEng.vol * 100)}%</b></div>
+   <p><button class="btn ghost" id="sndPlay">▶ Play sample 播放测试音</button> <span id="sndState" class="muted"></span></p></div>`;
+  simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
+  const play = async () => {
+    $("#sndState").textContent = "正在播放… Playing";
+    try { await AudioEng.play("audio/soundcheck.mp3", () => { const e = $("#sndState"); if (e) e.textContent = "播放结束，可重播。"; }); }
+    catch { $("#sndState").textContent = "无法播放音频，请检查音量和输出设备。"; }
+  };
+  $("#sndVol").oninput = e => { AudioEng.setVolume(e.target.value / 100); $("#sndPct").textContent = e.target.value + "%"; };
+  $("#sndPlay").onclick = play; play();
+  $("#simNext").onclick = () => { AudioEng.stop(); simAgree(); };
+}
+function simAgree() {
+  app.innerHTML = `<div class="simpanel"><h2>Test Rules <small>遵守事项</small></h2>
+   <ol class="rules">
+    <li>考试中请勿离开座位，请勿使用词典、笔记、手机或其他任何参考资料。<br><span class="muted">Do not use dictionaries, notes, phones, or any other materials.</span></li>
+    <li>听力音频每段只播放一次，不能暂停、重听或返回。<br><span class="muted">Each recording is played only once.</span></li>
+    <li>阅读部分每个 UNIT 单独计时；进入下一个 UNIT 后不能返回。<br><span class="muted">You cannot return to a previous unit.</span></li>
+    <li>时间到会自动进入下一部分或自动交卷。<br><span class="muted">The test ends automatically when time runs out.</span></li>
+    <li>本仿真仅供个人练习，分数为预估值。<br><span class="muted">Practice only; scores are estimates.</span></li>
+   </ol>
+   <p>Do you agree to follow these rules? 是否同意遵守以上事项？</p>
+   <label class="radio"><input type="radio" name="agree" value="1"> Yes 同意</label>
+   <label class="radio"><input type="radio" name="agree" value="0"> No 不同意</label></div>`;
+  simBar(`<button class="btn ghost" id="simBack">‹ Back</button><button class="btn" id="simNext" disabled>Next ›</button>`);
+  app.querySelectorAll("[name=agree]").forEach(r => r.onchange = () => { $("#simNext").disabled = r.value !== "1" || !r.checked; });
+  $("#simBack").onclick = simSound;
+  $("#simNext").onclick = simOverview;
+}
+function simOverview() {
+  app.innerHTML = `<div class="simpanel"><h2>Test Overview <small>考试说明</small></h2>
+   <table class="fmt"><tr><th>Section</th><th>全真 L&amp;R 200 题</th><th>IP 在线 90 题</th></tr>
+    <tr><td>Listening 听力<br><span class="muted">Part 1–4</span></td><td>100 题 · 约 48 分钟（音频自动进行）</td><td>45 题 · UNIT ONE + UNIT TWO</td></tr>
+    <tr><td>Reading 阅读<br><span class="muted">Part 5–7</span></td><td>100 题 · 75 分钟</td><td>45 题 · UNIT ONE 23 分钟 + UNIT TWO 14 分钟</td></tr></table>
+   <ul class="rules"><li>听力期间，屏幕右上角显示听力剩余时间；音频结束后自动进入下一题。</li>
+    <li>阅读每个 UNIT 的说明页出现时开始倒计时（右上角）。用 <b>Back</b> / <b>Next</b> 翻题，勾选 <b>Mark for Review</b> 标记，用 <b>Review</b> 查看未答 / 已标记的题。</li>
+    <li>最后一题之后进入 Review 页面，点击 <b>Next Unit</b> / <b>Finish Test</b> 进入下一单元或交卷。</li></ul></div>`;
+  simBar(`<button class="btn ghost" id="simBack">‹ Back</button><button class="btn" id="simNext">Next ›</button>`);
+  $("#simBack").onclick = simAgree; $("#simNext").onclick = simMode;
+}
+function simMode() {
+  const V = DATA.variants, order = ["full", "ip", "L", "R"].filter(k => V[k]);
+  app.innerHTML = `<div class="simpanel"><h2>Select Test Mode <small>选择模式</small></h2>
+   ${order.map((k, i) => `<label class="radio card"><input type="radio" name="mode" value="${k}" ${i === 0 ? "checked" : ""}> <b>${esc(V[k].name)}</b><br><span class="muted">${esc(V[k].desc)}</span></label>`).join("")}</div>`;
+  simBar(`<button class="btn ghost" id="simBack">‹ Back</button><button class="btn" id="simNext">Start 开始 ›</button>`);
+  $("#simBack").onclick = simOverview;
+  $("#simNext").onclick = () => { const v = app.querySelector("[name=mode]:checked").value; AudioEng.unlock(); startExam(buildVariant(v)); };
+}
+function simReadingIntro() {
+  S.phase = "R-gate"; hudSection.textContent = "Reading 阅读"; hudTimer.textContent = fmt(S.runits[0].time); $("#hudQ").textContent = "";
+  app.innerHTML = `<div class="simpanel"><h2>Reading Test <small>阅读部分</small></h2>
+   <p>In the Reading test, you will read a variety of texts and answer several types of reading comprehension questions. Answer as many questions as possible within the time allowed.</p>
+   <p class="muted">${S.lgroups.length ? "听力部分已结束。" : ""}阅读共 ${S.runits.map(u => `${u.name} ${Math.round(u.time / 60)} 分钟 / ${u.groups.reduce((a, g) => a + g.questions.length, 0)} 题`).join("，")}。点击 Next 进入第一个 UNIT 的说明页，倒计时从说明页开始。</p></div>`;
+  simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
+  $("#simNext").onclick = () => { requestWakeLock(); if (!S.tick) S.tick = setInterval(tick, 250); startReadingUnit(0); };
+}
+function simUnitDir() {
+  const u = S.runits[S.ru];
+  S.ritems = u.groups.flatMap(g => g.questions.map(q => ({q, g})));
+  $("#hudQ").textContent = "Directions";
+  app.innerHTML = `<div class="simpanel"><h2>Reading · ${esc(u.name)}</h2>
+   <h3>Part 5 · Incomplete Sentences 短句填空</h3>
+   <p><b>Directions:</b> Each sentence below is missing a word or phrase. Four answer choices are given. Select the choice that best completes the sentence.</p>
+   <p class="muted">本单元 ${S.ritems.length} 题，限时 ${Math.round(u.time / 60)} 分钟，倒计时已开始（右上角）。Part 6 长文填空和 Part 7 阅读理解的说明会显示在对应题目上方。</p></div>`;
+  simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
+  $("#simNext").onclick = () => simQ(0);
+}
+const SIM_DIR = {6: "Part 6 · Text Completion 长文填空：阅读文章，为每个空格选择最合适的单词、短语或句子。", 7: "Part 7 · Reading Comprehension 阅读理解：阅读文章，回答问题。"};
+function simQ(i) {
+  S.ri = i; S.phase = "R";
+  const {q, g} = S.ritems[i], prev = S.ritems[i - 1];
+  const newPart = g.part !== 5 && (!prev || prev.g.part !== g.part);
+  const hasDoc = g.docs && g.docs.length;
+  $("#hudQ").textContent = `Question ${q.no}`;
+  app.innerHTML = `<div class="simq${hasDoc ? " split" : ""}">
+   ${hasDoc ? `<div class="simdoc">${newPart ? `<div class="dirnote">${SIM_DIR[g.part]}</div>` : ""}${docsHTML(g)}</div>` : ""}
+   <div class="simask">
+    <div class="qhead"><div class="qnum">Question ${q.no} <span class="muted">(${i + 1} / ${S.ritems.length})</span></div>
+     <label class="mark"><input type="checkbox" id="markQ" ${S.flags[q.no] ? "checked" : ""}> Mark for Review 标记</label></div>
+    <div class="qtext">${q.q ? inline(q.q) : `为空格 (${q.no}) 选择最佳选项 · Select the best answer for blank (${q.no}).`}</div>
+    ${optsHTML(q, true)}</div></div>`;
+  bindOpts(app);
+  $("#markQ").onchange = e => { S.flags[q.no] = e.target.checked; };
+  simBar(`<button class="btn ghost" id="simBack" ${i === 0 ? "disabled" : ""}>‹ Back</button><button class="btn ghost" id="simRev">Review</button><button class="btn" id="simNext">Next ›</button>`);
+  $("#simBack").onclick = () => simQ(i - 1);
+  $("#simRev").onclick = () => simReview();
+  $("#simNext").onclick = () => i + 1 < S.ritems.length ? simQ(i + 1) : simReview();
+  window.scrollTo(0, 0); const sd = app.querySelector(".simdoc"); if (sd) sd.scrollTop = 0;
+}
+function simReview() {
+  const u = S.runits[S.ru], items = S.ritems;
+  const un = items.filter(x => S.answers[x.q.no] === undefined).length, fl = items.filter(x => S.flags[x.q.no]).length;
+  $("#hudQ").textContent = "Review";
+  app.innerHTML = `<div class="simpanel"><h2>Review · ${esc(u.name)}</h2>
+   <p class="muted">点击题号返回该题。Not Answered 未作答：<b>${un}</b> · Marked 已标记：<b>${fl}</b></p>
+   <div class="revgrid">${items.map((x, i) => `<button class="rvit${S.answers[x.q.no] !== undefined ? " done" : ""}${S.flags[x.q.no] ? " flag" : ""}" data-i="${i}"><b>${x.q.no}</b><small>${S.answers[x.q.no] !== undefined ? "Answered" : "Not Answered"}${S.flags[x.q.no] ? " · ⚑" : ""}</small></button>`).join("")}</div></div>`;
+  app.querySelectorAll(".rvit").forEach(b => b.onclick = () => simQ(+b.dataset.i));
+  const last = lastUnit();
+  simBar(`<button class="btn ghost" id="simRet">‹ Return 返回</button><button class="btn ${last ? "warn" : ""}" id="simEnd">${last ? "Finish Test 交卷" : "Next Unit 下一单元 ›"}</button>`);
+  $("#simRet").onclick = () => simQ(Math.min(S.ri || 0, items.length - 1));
+  $("#simEnd").onclick = () => {
+    overlay.dataset.dismiss = "1";
+    showOverlay(`<h2>${last ? "Finish Test 确认交卷？" : "Finish Unit 确认结束本单元？"}</h2>
+     <p>${un ? `还有 <b>${un}</b> 题未作答。` : "所有题目均已作答。"}${last ? "交卷后不能再修改答案。" : "进入下一单元后不能再回到本单元（剩余时间不会顺延）。"}</p>
+     <div class="row"><button class="btn ghost" id="feNo">Cancel 取消</button><button class="btn warn" id="feYes">${last ? "Finish Test" : "Finish Unit"}</button></div>`);
+    $("#feNo").onclick = hideOverlay;
+    $("#feYes").onclick = () => { hideOverlay(); if (last) submit(); else startReadingUnit(S.ru + 1); };
+  };
+}
+function simCongrats(aid) {
+  document.body.classList.add("sim");
+  app.innerHTML = `<div class="simpanel center"><div class="big">🎉</div><h1>Congratulations!</h1><p>You have completed the test. 考试已结束。</p><p class="muted">点击 Next 查看成绩。</p></div>`;
+  simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
+  $("#simNext").onclick = () => { simBar(null); go("#/result/" + aid); };
+}
+
+if (DEBUG) window.__t = {get S() { return S; }, AudioEng, loadHist};   // test hook (debug only)
 /* ---------- boot ---------- */
 (async () => {
-  const pw = sessionStorage.getItem(PWKEY);
+  if (!SIM && sessionStorage.getItem("ets950.sim") === "1") SIM = true;
+  if (SIM) document.body.classList.add("sim");
+  const pw = SHELL ? null : sessionStorage.getItem(PWKEY);
   if (pw) {
     app.innerHTML = `<div class="card gate"><p>正在解密…</p></div>`;
     try { await unlock(pw); } catch (e) { sessionStorage.removeItem(PWKEY); return renderLock(e.message === "BADPW" ? "已保存的密码无效，请重新输入。" : ""); }
