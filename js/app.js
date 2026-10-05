@@ -77,11 +77,14 @@ const saveNote = n => localStorage.setItem(NKEY, JSON.stringify(n));
 /* ---------- crypto ---------- */
 let META = null, KEY = null, DATA = null, TESTS = {}, TID = null, UNLOCK_YM = null;
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-/** Current YYYY-MM in Asia/Tokyo (exam password month). */
-function tokyoYM(d = new Date()) {
+/** Asia/Tokyo calendar parts: YYYY-MM for session expiry; MM for password wrap. */
+function tokyoParts(d = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit" }).formatToParts(d);
-  return parts.find(p => p.type === "year").value + "-" + parts.find(p => p.type === "month").value;
+  const y = parts.find(p => p.type === "year").value, m = parts.find(p => p.type === "month").value;
+  return { ym: y + "-" + m, mm: m };
 }
+function tokyoYM(d) { return tokyoParts(d).ym; }
+function tokyoMM(d) { return tokyoParts(d).mm; }
 function clearSavedPw() { sessionStorage.removeItem(PWKEY); sessionStorage.removeItem(PWMKEY); }
 function savePwSession(pw, ym) { sessionStorage.setItem(PWKEY, pw); sessionStorage.setItem(PWMKEY, ym); }
 function loadSavedPw() {
@@ -100,9 +103,9 @@ async function fetchBin(file, onprog) {
 async function decryptBin(key, bytes) {
   return crypto.subtle.decrypt({name: "AES-GCM", iv: bytes.subarray(0, 12)}, key, bytes.subarray(12));
 }
-async function unwrapDataKey(pw, ym) {
-  const w = META.wraps && META.wraps[ym];
-  if (!w) throw new Error("NO_MONTH");
+async function unwrapDataKey(pw, mm) {
+  const w = META.wraps && META.wraps[mm];
+  if (!w) throw new Error("BADPW");
   const salt = b64(w.salt), wrap = b64(w.wrap);
   const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
   const wk = await crypto.subtle.deriveKey(
@@ -117,11 +120,8 @@ async function unwrapDataKey(pw, ym) {
 function metaTests() { return META.tests || [{id: "t1", label: "Test 1", files: META.files}]; }
 async function unlock(pw) {
   if (!META) { const r = await fetch("data/meta.json", {cache: "no-cache"}); META = await r.json(); }
-  const ym = tokyoYM();
-  if (META.validTo && ym > META.validTo) throw new Error("EXPIRED");
-  if (META.validFrom && ym < META.validFrom) throw new Error("EXPIRED");
-  if (!META.wraps || !META.wraps[ym]) throw new Error("EXPIRED");
-  const key = await unwrapDataKey(pw, ym);
+  const { ym, mm } = tokyoParts();
+  const key = await unwrapDataKey(pw, mm);
   const out = {};
   for (const tt of metaTests()) {
     const bytes = await fetchBin(tt.files.data.file);
@@ -236,7 +236,7 @@ function renderLock(msg = "") {
     } catch (err) {
       btn.disabled = false; btn.textContent = SIM ? "SUBMIT" : t("unlockBtn");
       const code = err && err.message;
-      $("#err").textContent = code === "EXPIRED" ? t("pwExpired") : (code === "BADPW" || code === "NO_MONTH") ? t("badPwMonth") : t("loadFail");
+      $("#err").textContent = code === "BADPW" ? t("badPwMonth") : t("loadFail");
       $("#pw").select();
     }
   };
@@ -1097,7 +1097,7 @@ function simCongrats(aid) {
   $("#simNext").onclick = () => { simBar(null); go("#/result/" + aid); };
 }
 
-if (DEBUG || FAST) window.__t = {get S() { return S; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, unlock, clearSavedPw};   // test hook
+if (DEBUG || FAST) window.__t = {get S() { return S; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw};   // test hook
 /* ---------- boot ---------- */
 (async () => {
   if (!SIM && sessionStorage.getItem("ets950.sim") === "1") SIM = true;
@@ -1109,7 +1109,7 @@ if (DEBUG || FAST) window.__t = {get S() { return S; }, AudioEng, loadHist, FAST
     catch (e) {
       clearSavedPw();
       const code = e && e.message;
-      return renderLock(code === "EXPIRED" ? t("pwExpired") : (code === "BADPW" || code === "NO_MONTH") ? t("savedPwBad") : "");
+      return renderLock(code === "BADPW" ? t("savedPwBad") : "");
     }
   }
   route();
