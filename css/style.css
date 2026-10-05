@@ -196,7 +196,7 @@ body.sim .langsw{background:#fff}
   padding:10px 18px;padding-bottom:max(10px,env(safe-area-inset-bottom));min-height:62px}
 .simbar .btn{min-width:118px;padding:11px 16px;font-size:15px}
 .simbar .muted{color:#d1d5db;font-size:13px}
-.simbar-mark{color:#e5e7eb;margin:0 8px;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+label.mark.simbar-mark,.simbar .simbar-mark{color:#f3f4f6;margin:0 8px;font-size:13px;display:inline-flex;align-items:center;gap:6px;flex-shrink:1}
 .simpanel{background:#fff;border:1px solid #c5ccd4;border-radius:2px;padding:24px 28px;margin:0 auto 14px;max-width:920px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .simpanel h1 small,.simpanel h2 small{display:block;font-size:13px;color:var(--muted);font-weight:400;margin-top:4px}
 .simpanel.center{text-align:center}.simpanel .big{font-size:52px}
@@ -252,7 +252,7 @@ label.ans-tog{display:flex;align-items:flex-start;gap:8px;margin:12px 0;font-siz
   .volbtn{padding:4px 6px;font-size:12px}
   body.sim .brand{display:none}body.sim .topbar{justify-content:flex-end}
   body.sim .examhud{margin-right:auto;margin-left:0}.vtx{display:none}
-  .simbar-mark{display:none}
+  label.mark.simbar-mark{font-size:11px;margin:0 4px;max-width:42vw;overflow:hidden;text-overflow:ellipsis}
   .revfilters .btn{flex:1;min-width:0}
   .scorebig{grid-template-columns:1fr;gap:8px}
   .nav-tiles{grid-template-columns:1fr}

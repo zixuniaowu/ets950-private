@@ -1044,21 +1044,18 @@ function simQ(i) {
   const hasDoc = g.docs && g.docs.length;
   const u = S.runits[S.ru];
   const [a, b] = unitRange(u);
-  const dno = S.rDisp[q.no] || q.no;
-  $("#hudQ").textContent = `Question ${dno}`;
+  const prog = S.rDisp[q.no] || (i + 1);
+  $("#hudQ").textContent = `Question ${q.no}`;
   hudSection.textContent = `Reading · Questions ${a}–${b} of ${S.rTotal}`;
   app.innerHTML = `<div class="simq${hasDoc ? " split" : ""}">
    ${hasDoc ? `<div class="simdoc">${newPart ? `<div class="dirnote">${SIM_DIR[g.part]}</div>` : ""}${docsHTML(g)}</div>` : ""}
    <div class="simask">
-    <div class="qhead"><div class="qnum">Question ${dno} <span class="muted">(${i + 1} / ${S.ritems.length})</span></div>
-     <label class="mark"><input type="checkbox" id="markQ" ${S.flags[q.no] ? "checked" : ""}> ${t("markLbl")}</label></div>
-    <div class="qtext">${q.q ? inline(q.q) : t("simBlank", dno)}</div>
+    <div class="qhead"><div class="qnum">Question ${q.no} <span class="muted">${prog} of ${S.rTotal}</span></div></div>
+    <div class="qtext">${q.q ? inline(q.q) : t("simBlank", q.no)}</div>
     ${optsHTML(q, true)}</div></div>`;
   bindOpts(app);
-  $("#markQ").onchange = e => { S.flags[q.no] = e.target.checked; };
   simBar(`<button class="btn ghost" id="simBack" ${i === 0 ? "disabled" : ""}>‹ Back</button><label class="mark simbar-mark"><input type="checkbox" id="markQ2" ${S.flags[q.no] ? "checked" : ""}> Mark item for review</label><button class="btn ghost" id="simRev">Review</button><button class="btn" id="simNext">Next ›</button>`);
-  const syncMark = e => { S.flags[q.no] = e.target.checked; const o = $("#markQ"); if (o) o.checked = e.target.checked; };
-  $("#markQ2").onchange = syncMark;
+  $("#markQ2").onchange = e => { S.flags[q.no] = e.target.checked; };
   $("#simBack").onclick = () => simQ(i - 1);
   $("#simRev").onclick = () => simReview("all");
   $("#simNext").onclick = () => i + 1 < S.ritems.length ? simQ(i + 1) : simReview("all");
@@ -1089,9 +1086,9 @@ function simReview(filter = "all") {
    </div>
    <table class="revtable"><thead><tr><th>#</th><th>${t("revStatus")}</th><th></th></tr></thead>
    <tbody>${shown.length ? shown.map((x) => {
-     const idx = items.indexOf(x); const dno = S.rDisp[x.q.no] || x.q.no;
+     const idx = items.indexOf(x);
      const done = S.answers[x.q.no] !== undefined;
-     return `<tr class="rrow${done ? " done" : " miss"}${S.flags[x.q.no] ? " flag" : ""}" data-i="${idx}"><td><b>${dno}</b></td><td>${status(x)} <span class="muted">${done ? "Answered" : "Not Answered"}</span></td><td>›</td></tr>`;
+     return `<tr class="rrow${done ? " done" : " miss"}${S.flags[x.q.no] ? " flag" : ""}" data-i="${idx}"><td><b>${x.q.no}</b></td><td>${status(x)} <span class="muted">${done ? "Answered" : "Not Answered"}</span></td><td>›</td></tr>`;
    }).join("") : `<tr><td colspan="3" class="muted">${t("revEmpty")}</td></tr>`}</tbody></table></div>`;
   app.querySelectorAll(".revfilters [data-f]").forEach(b => b.onclick = () => simReview(b.dataset.f));
   app.querySelectorAll(".rrow").forEach(b => b.onclick = () => simQ(+b.dataset.i));
@@ -1117,7 +1114,7 @@ function simCongrats(aid) {
   $("#simNext").onclick = () => { simBar(null); go("#/result/" + aid); };
 }
 
-if (DEBUG || FAST) window.__t = {get S() { return S; }, set S(v) { S = v; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw, startExam, buildVariant, abortExam, go, simQ, simReview, get DATA() { return DATA; }};   // test hook
+if (DEBUG || FAST) window.__t = {get S() { return S; }, set S(v) { S = v; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw, startExam, buildVariant, abortExam, go, simQ, simReview, allQuestions, scaled, get DATA() { return DATA; }};   // test hook
 /* ---------- boot ---------- */
 (async () => {
   if (!SIM && sessionStorage.getItem("ets950.sim") === "1") SIM = true;
