@@ -4,7 +4,7 @@
 const LKEY = "ets950.lang";
 let lang = localStorage.getItem(LKEY) === "ja" ? "ja" : "zh";
 const zh = {
-  pageTitle: "ETS 托业 950+ · 真题模考", brand: "ETS 托业 950+ · 真题模考", volLbl: "音量 Volume", foot: "仅限个人学习使用。所有内容均已加密，需要密码才能查看。",
+  pageTitle: "ETS 托业 950+ · 真题模考", brand: "ETS 托业 950+ · 真题模考", volLbl: "音量 Volume", foot: "仅限个人学习使用。",
   part1: "Part 1 照片描述", part2: "Part 2 应答问题", part3: "Part 3 会话问题", part4: "Part 4 说明文问题", part5: "Part 5 短句填空", part6: "Part 6 长文填空", part7: "Part 7 阅读理解",
   pdir1: "听 4 个描述（不印在屏幕上），选出最符合照片的一项，然后点击作答。只播放一次。",
   pdir2: "听一个问题或陈述和 3 个回答（不印在屏幕上），选出最恰当的回答，然后点击作答。只播放一次。",
@@ -12,9 +12,9 @@ const zh = {
   pdir4: "听一段独白（广播、留言、讲话等），回答 3 个问题。可边听边点击作答。",
   dlFail: f => "下载失败：" + f,
   confirmQuitExam: "考试进行中，确定退出吗？本次作答不会保存。",
-  simLockSub: "IP 在线考试仿真", simLockP: "Enter your Authorization Code. 请输入当月密码（按月循环）。当月のパスワードを入力してください（月次・毎年循環）。", simLockPh: "Authorization Code / 密码",
+  simLockSub: "IP 在线考试仿真", simLockP: "Enter your Authorization Code.", simLockPh: "Authorization Code / 密码",
   rememberShort: "记住（仅本次会话）", exitBtn: "退出 Exit",
-  lockTitle: "🔒 请输入密码", lockDesc: "本站内容（题目、原文、解析、音频）均已加密。密码按日历月更换（Asia/Tokyo，每年循环），输入当月密码后在本机浏览器内解密。", pwPh: "密码",
+  lockTitle: "🔒 请输入密码", lockDesc: "", pwPh: "密码",
   rememberLong: "记住（仅在本次浏览器会话中有效，关闭标签页后失效）", unlockBtn: "解锁", verifying: "正在解密… Verifying",
   badPw: "密码错误或已过期（每月更换）。\nパスワードが違うか、期限切れです（毎月更新）。", badPwMonth: "密码错误或已过期（每月更换）。\nパスワードが違うか、期限切れです（毎月更新）。", pwExpired: "密码已过期，请联系管理员。\nパスワードの有効期限が切れました。管理者に連絡してください。", loadFail: "加载失败，请检查网络后重试。",
   trendAria: "成绩趋势", trendNote: "只统计听力+阅读都做的模式。橙色虚线 = 800 分（预估分）",
@@ -146,7 +146,7 @@ const zh = {
 };
 
 const ja = {
-  pageTitle: "ETS TOEIC 950+ · 過去問模試", brand: "ETS TOEIC 950+ · 過去問模試", volLbl: "音量 Volume", foot: "個人学習専用です。すべての内容は暗号化されており、閲覧にはパスワードが必要です。",
+  pageTitle: "ETS TOEIC 950+ · 過去問模試", brand: "ETS TOEIC 950+ · 過去問模試", volLbl: "音量 Volume", foot: "個人学習専用です。",
   part1: "Part 1 写真描写問題", part2: "Part 2 応答問題", part3: "Part 3 会話問題", part4: "Part 4 説明文問題", part5: "Part 5 短文穴埋め問題", part6: "Part 6 長文穴埋め問題", part7: "Part 7 読解問題",
   pdir1: "4つの説明文（画面には表示されません）を聞き、写真を最も適切に描写しているものを選んでクリックしてください。音声は1回だけ流れます。",
   pdir2: "質問または発言と、それに対する3つの応答（画面には表示されません）を聞き、最も適切な応答を選んでクリックしてください。音声は1回だけ流れます。",
@@ -154,9 +154,9 @@ const ja = {
   pdir4: "1人の話し手によるトーク（アナウンス、留守番電話のメッセージ、スピーチなど）を聞き、3つの設問に答えてください。聞きながらクリックして解答できます。",
   dlFail: f => "ダウンロードに失敗しました：" + f,
   confirmQuitExam: "試験中です。終了してもよろしいですか？今回の解答は保存されません。",
-  simLockSub: "IP（オンライン）テスト シミュレーション", simLockP: "Enter your Authorization Code. 当月のパスワードを入力してください（月次・毎年循環）。请输入当月密码（按月循环）。", simLockPh: "Authorization Code / パスワード",
+  simLockSub: "IP（オンライン）テスト シミュレーション", simLockP: "Enter your Authorization Code.", simLockPh: "Authorization Code / パスワード",
   rememberShort: "記憶する（このセッションのみ）", exitBtn: "終了 Exit",
-  lockTitle: "🔒 パスワードを入力してください", lockDesc: "このサイトの内容（問題・スクリプト・解説・音声）はすべて暗号化されています。パスワードは暦月で更新され、毎年同じ12個が循環します（Asia/Tokyo）。当月のパスワードを入力すると復号されます。", pwPh: "パスワード",
+  lockTitle: "🔒 パスワードを入力してください", lockDesc: "", pwPh: "パスワード",
   rememberLong: "記憶する（このブラウザのセッション中のみ有効。タブを閉じると無効になります）", unlockBtn: "ロック解除", verifying: "復号中… Verifying",
   badPw: "パスワードが違うか、期限切れです（毎月更新）。\n密码错误或已过期（每月更换）。", badPwMonth: "パスワードが違うか、期限切れです（毎月更新）。\n密码错误或已过期（每月更换）。", pwExpired: "パスワードの有効期限が切れました。管理者に連絡してください。\n密码已过期，请联系管理员。", loadFail: "読み込みに失敗しました。ネットワークを確認して、もう一度お試しください。",
   trendAria: "スコアの推移", trendNote: "リスニングとリーディングの両方を受けたモードのみ集計しています。オレンジの点線 = 800点（予想スコア）",

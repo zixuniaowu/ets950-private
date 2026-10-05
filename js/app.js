@@ -335,13 +335,13 @@ function renderLock(msg = "") {
   setHud(false);
   if (SIM) document.body.classList.add("sim");
   app.innerHTML = SIM ? `<div class="simpanel lock">${window.I18N.switchHTML()}<h1>TOEIC® Listening &amp; Reading Test <small>${t("simLockSub")}</small></h1>
-   <p>${t("simLockP")}</p>
+   ${t("simLockP") ? `<p>${t("simLockP")}</p>` : ""}
    <form id="lockForm"><input type="password" id="pw" autocomplete="current-password" placeholder="${t("simLockPh")}" required>
    ${SHELL ? "" : `<label><input type="checkbox" id="remember"> ${t("rememberShort")}</label>`}
    <div class="err" id="err">${esc(msg)}</div>
    <button class="btn block" id="unlockBtn" type="submit">SUBMIT</button></form>${SHELL ? `<p style="margin-top:18px"><button class="btn ghost small" type="button" id="lockExit">${t("exitBtn")}</button></p>` : ""}</div>` : `<div class="card lock hero">${window.I18N.switchHTML()}<div class="eyebrow">Private Mock Exam</div>
    <h1>${t("lockTitle")}</h1>
-   <p class="muted">${t("lockDesc")}</p>
+   ${t("lockDesc") ? `<p class="muted">${t("lockDesc")}</p>` : ""}
    <form id="lockForm"><input type="password" id="pw" autocomplete="current-password" placeholder="${t("pwPh")}" required>
    <label><input type="checkbox" id="remember"> ${t("rememberLong")}</label>
    <div class="err" id="err">${esc(msg)}</div>
