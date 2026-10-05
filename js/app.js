@@ -4,6 +4,7 @@
 const $ = (s, el = document) => el.querySelector(s);
 const app = $("#app"), hud = $("#hud"), hudTimer = $("#hudTimer"), hudSection = $("#hudSection"), overlay = $("#overlay");
 const DEBUG = /[?&]debug=1/.test(location.search);
+const FAST = /[?&]fast=1/.test(location.search);  // smoke-test only: shorten timers
 const LET = "ABCD";
 const t = (k, ...a) => window.I18N.t(k, ...a), pick = (o, k) => window.I18N.pick(o, k), loc = () => window.I18N.locale();
 const PART_ZH = new Proxy({}, {get: (_, p) => t("part" + String(p))});      // localized part names
@@ -37,6 +38,11 @@ function scaled(sec, raw, max) {
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt = sec => { sec = Math.max(0, Math.ceil(sec)); return `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`; };
+const fmtHMS = sec => { sec = Math.max(0, Math.ceil(sec)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`; };
+const ANSWER_GAP = {1: 5, 2: 5, 3: 8, 4: 8};   // seconds after each listening clip (matches existing TOEIC gaps)
+const AKEY = "ets950.ansTimer";                 // optional per-question remaining-seconds (default off)
+const showAnsTimer = () => localStorage.getItem(AKEY) === "1";
+const setAnsTimer = on => localStorage.setItem(AKEY, on ? "1" : "0");
 function inline(text) {
   return esc(text)
     .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
@@ -243,7 +249,9 @@ function renderHome() {
   <div class="card"><h2>${t("simCardTitle")}</h2><p class="muted">${t("simCardDesc")}</p>
    <button class="btn block" id="simEnter">${t("simEnter")}</button></div>
   <div class="card modes"><h2>${t("chooseMode")}</h2>
-  ${Object.keys(V).map(k => `<div class="card"><h3 style="margin-top:0">${esc(vName(V[k]))}</h3><p class="muted">${esc(vDesc(V[k]))}</p><a class="btn block" href="#/intro/${k}">${t("start")}</a></div>`).join("")}</div>
+  ${["ip","full"].filter(k => V[k]).map(k => `<div class="card mode-main"><h3 style="margin-top:0">${esc(vName(V[k]))}</h3><p class="muted">${esc(vDesc(V[k]))}</p><a class="btn block" href="#/intro/${k}">${t("start")}</a></div>`).join("")}
+  <h3 class="mode-sec">${t("practiceModes")}</h3>
+  ${["L","R"].filter(k => V[k]).map(k => `<div class="card"><h3 style="margin-top:0">${esc(vName(V[k]))}</h3><p class="muted">${esc(vDesc(V[k]))}</p><a class="btn ghost block" href="#/intro/${k}">${t("start")}</a></div>`).join("")}</div>
   <div class="card"><h2>${t("nbTitle")}</h2><p>${t("nbCount", nb)}</p><a class="btn ghost block" href="#/notebook">${t("nbOpen")}</a></div>
   ${historyCard()}
   <div class="card"><details><summary>${t("notes")}</summary><ul class="rules">${pick(DATA, "notes").map(n => `<li>${esc(n)}</li>`).join("")}</ul></details>
@@ -344,30 +352,41 @@ document.addEventListener("visibilitychange", () => {
 /* ---------- exam ---------- */
 function startExam(test) {
   T = test;
-  S = {vid: test.id, answers: {}, flags: {}, phase: "L", li: 0, done: false, started: Date.now(), tick: null, sim: SIM};
+  S = {vid: test.id, answers: {}, flags: {}, phase: "L", li: 0, lu: 0, done: false, started: Date.now(), tick: null, sim: SIM, ansLeft: null, ansDeadline: 0};
   if (SHELL) SHELL.setExamActive(true);
   simBar(S.sim ? "" : null);
   const L = test.sections.find(s => s.id === "L");
-  S.lgroups = L ? L.units.flatMap(u => u.groups.map(g => Object.assign(g, {_unit: u}))) : [];
+  S.lunits = L ? L.units.map(u => ({name: u.name, groups: u.groups.map(g => Object.assign(g, {_unit: u}))})) : [];
+  S.lgroups = S.lunits.flatMap(u => u.groups);
   S.lTotal = S.lgroups.reduce((a, g) => a + g.duration, 0);
   S.lCount = S.lgroups.reduce((a, g) => a + g.questions.length, 0);
   const R = test.sections.find(s => s.id === "R");
-  S.runits = R ? R.units : [];
+  S.runits = R ? R.units.map(u => FAST ? Object.assign({}, u, {time: Math.min(u.time, 25)}) : u) : [];
+  // Display numbers for reading (1..N across the section) and listening
+  S.rDisp = {}; let ri = 0;
+  for (const u of S.runits) for (const g of u.groups) for (const q of g.questions) S.rDisp[q.no] = ++ri;
+  S.rTotal = ri;
+  S.lDisp = {}; let li = 0;
+  for (const g of S.lgroups) for (const q of g.questions) S.lDisp[q.no] = ++li;
   setHud(true);
   go("#/exam");
   if (!L) { S.tick = setInterval(tick, 250); requestWakeLock(); return startReading(); }
+  hideListeningTimer();
   hudSection.textContent = t("hudListening");
-  hudTimer.textContent = fmt(S.lTotal);
   const parts = [...new Set(S.lgroups.map(g => g.audio[0]))];
+  const ansToggle = `<label class="ans-tog"><input type="checkbox" id="ansTimerChk" ${showAnsTimer() ? "checked" : ""}> ${t("ansTimerLbl")}</label>`;
   app.innerHTML = S.sim ? `<div class="simpanel"><h2>Listening Test <small>${t("simLSub")}</small></h2>
-   <p>In the Listening test, you will hear a variety of statements, questions, conversations, and talks recorded in English, and answer questions about them. Each recording is played only once.</p>
+   <p>${t("simLOnlineP", S.vid === "ip" ? 25 : 45)}</p>
    <p class="muted">${t("simLInfo", S.lCount, Math.round(S.lTotal / 60))}</p>
+   ${ansToggle}
    <p id="prep">${t("simPrep")} <b id="prepPct">0%</b></p>
    <button class="btn block" id="gateBtn" disabled>${t("simWait")}</button></div>` :
    `<div class="card gate"><div class="big">🎧</div><h2>${t("lGateTitle")}</h2>
    <p class="muted">${t("lGateInfo", S.lCount, Math.round(S.lTotal / 60))}</p>
+   ${ansToggle}
    <p id="prep">${t("prepDl")} <b id="prepPct">0%</b></p>
    <button class="btn block" id="gateBtn" disabled>${t("wait")}</button></div>`;
+  const chk = $("#ansTimerChk"); if (chk) chk.onchange = e => setAnsTimer(e.target.checked);
   const sizes = parts.map(p => DATA._files["a" + p].size), tot = sizes.reduce((a, b) => a + b, 0), prog = parts.map(() => 0);
   const upd = () => { const e = $("#prepPct"); if (e) e.textContent = Math.round(prog.reduce((a, x, i) => a + x * sizes[i], 0) / tot * 100) + "%"; };
   (async () => {
@@ -376,35 +395,63 @@ function startExam(test) {
       if (!S || S.phase !== "L") return;
       $("#prep").textContent = t("audioReady");
       const b = $("#gateBtn"); b.disabled = false; b.textContent = S.sim ? t("simNextStart") : t("startListening");
-      b.onclick = () => { AudioEng.unlock(); playGroup(0); S.tick = setInterval(tick, 250); };
+      b.onclick = () => { AudioEng.unlock(); S.tick = setInterval(tick, 250); if (S.sim) listenOverview(); else playGroup(0); };
     } catch (e) {
       $("#prep").innerHTML = `<span style="color:#dc2626">${t("audioLoadFail")}</span>`;
     }
   })();
 }
-function releaseWake() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } hudTimer.classList.remove("warn"); }
-function abortExam() { releaseWake(); simBar(null); if (SHELL) SHELL.setExamActive(false); if (!S) return; AudioEng.stop(); AudioEng.prune([]); clearInterval(S.tick); S = null; hideOverlay(); setHud(false); }
+function hideListeningTimer() {
+  hudTimer.textContent = "";
+  hudTimer.classList.add("hidden");
+  hudTimer.classList.remove("warn", "reading");
+}
+function showReadingTimer(sec) {
+  hudTimer.classList.remove("hidden");
+  hudTimer.classList.add("reading");
+  hudTimer.textContent = fmtHMS(sec);
+}
+function releaseWake() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } hudTimer.classList.remove("warn", "reading"); hudTimer.classList.remove("hidden"); }
+function abortExam() { releaseWake(); simBar(null); if (SHELL) SHELL.setExamActive(false); if (!S) return; AudioEng.stop(); AudioEng.prune([]); clearInterval(S.tick); clearTimeout(S.ansTimer); S = null; hideOverlay(); setHud(false); }
 
 function tick() {
   if (!S || S.done) return;
-  if (S.phase === "L") {
-    const g = S.lgroups[S.li]; if (!g) return;
-    const rest = S.lgroups.slice(S.li + 1).reduce((a, x) => a + x.duration, 0);
-    const left = Math.max(0, g.duration - AudioEng.elapsed()) + rest;
-    hudTimer.textContent = fmt(left);
-  } else if (S.phase === "R") {
+  if (S.phase === "L" || S.phase === "L-dir" || S.phase === "L-gap") {
+    hideListeningTimer();
+    // Optional per-question remaining-seconds during the post-audio answer window
+    if (S.phase === "L-gap" && S.ansDeadline) {
+      const left = Math.max(0, (S.ansDeadline - Date.now()) / 1000);
+      S.ansLeft = left;
+      const el = $("#ansLeft");
+      if (el) el.textContent = showAnsTimer() ? t("ansLeft", Math.ceil(left)) : "";
+      if (showAnsTimer() && el) el.classList.toggle("hidden", false);
+    }
+  } else if (S.phase === "R" || S.phase === "R-dir" || S.phase === "R-rev") {
     const left = (S.rDeadline - Date.now()) / 1000;
-    hudTimer.textContent = fmt(left);
+    showReadingTimer(left);
     hudTimer.classList.toggle("warn", left < 300);
-    if (left <= 0) {
-      const msg = S.ru < S.runits.length - 1 ? t("unitTimeUp", S.runits[S.ru].name) : t("allTimeUp");
-      if (S.ru < S.runits.length - 1) startReadingUnit(S.ru + 1); else submit();
-      timeUpNote(msg);
+    if (left <= 0 && !S.timeupShown) {
+      S.timeupShown = true;
+      const more = S.ru < S.runits.length - 1;
+      showTimeUpPage(more ? t("unitTimeUp", S.runits[S.ru].name) : t("allTimeUp"), () => {
+        if (more) startReadingUnit(S.ru + 1); else submit();
+      });
     }
   }
 }
 
-function timeUpNote(msg) {   // non-blocking (alert() would freeze the kiosk timer)
+function showTimeUpPage(msg, then) {
+  AudioEng.stop();
+  clearTimeout(S.ansTimer);
+  S.phase = "timeup";
+  hideOverlay();
+  app.innerHTML = `<div class="simpanel center timeup"><div class="big">⏰</div><h1>${t("timeUpTitle")}</h1><p>${esc(msg)}</p><p class="muted">${t("timeUpNext")}</p></div>`;
+  simBar(S.sim ? `<span></span><button class="btn" id="timeupGo">Next ›</button>` : null);
+  const goNext = () => { if (S) { S.timeupShown = false; then(); } };
+  if ($("#timeupGo")) $("#timeupGo").onclick = goNext;
+  else setTimeout(goNext, 1800);
+}
+function timeUpNote(msg) {   // fallback toast (non-sim)
   const n = document.createElement("div"); n.className = "toast"; n.textContent = "⏰ " + msg;
   document.body.appendChild(n); setTimeout(() => n.remove(), 5000);
 }
@@ -418,7 +465,7 @@ function bindOpts(root) {
     const no = +b.dataset.q, i = +b.dataset.i;
     S.answers[no] = i;
     root.querySelectorAll(`.opt[data-q="${no}"]`).forEach(x => x.classList.toggle("sel", +x.dataset.i === i));
-    if (S.phase === "R") updatePaletteState();
+    if (S.phase === "R" || S.phase === "R-dir" || S.phase === "R-rev") updatePaletteState();
   });
 }
 const photoImg = g => DATA._img[g.questions[0].no] ? `<img class="scene p1photo" src="${DATA._img[g.questions[0].no]}" alt="${t("photoAlt", g.questions[0].no)}">` : `<div class="photo-ph"><div class="lbl">${t("photoFail")}</div></div>`;
@@ -426,35 +473,143 @@ const photoHTML = photoImg;
 const photoReviewHTML = g => `${photoImg(g)}${g.photo ? `<div class="photo-ph refdesc"><div class="lbl">${t("refDesc")}</div><p>${esc(g.photo)}</p></div>` : ""}`;
 const gfxHTML = g => g.graphic ? tableHTML(g.graphic.rows, g.graphic.title) : "";
 
+function dirAudioUrl(key) { return "audio/" + key + ".mp3"; }
+
+/** Listening overview directions (online style). Overview audio auto-advances when it finishes. */
+function listenOverview() {
+  S.phase = "L-dir"; hideListeningTimer();
+  const isIp = S.vid === "ip";
+  const clip = isIp ? "dir_overview_ip" : "dir_overview_full";
+  const mins = isIp ? 25 : 45;
+  $("#hudQ").textContent = "Directions";
+  hudSection.textContent = t("hudListening");
+  app.innerHTML = `<div class="simpanel"><h2>Listening Test <small>${t("simLSub")}</small></h2>
+   <p><b>Directions:</b> ${t("dirListenOnline", mins)}</p>
+   <div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>${t("simNowPlaying")}</span></div>
+   <p class="muted">${t("dirOverviewAuto")}</p></div>`;
+  simBar(`<span class="muted">${t("simAutoPlay")}</span><button class="btn" id="simNext">Next ›</button>`);
+  let advanced = false;
+  const advance = () => { if (advanced || !S) return; advanced = true; AudioEng.stop(); listenUnitIntro(0); };
+  $("#simNext").onclick = advance;
+  AudioEng.play(dirAudioUrl(clip), () => { const ls = $("#ls"); if (ls) ls.innerHTML = `<span>${t("dirAudioDone")}</span>`; setTimeout(advance, 600); }).catch(() => {});
+}
+
+/** UNIT intro / UNIT TWO transition for listening. */
+function listenUnitIntro(lu) {
+  S.lu = lu; S.phase = "L-dir"; hideListeningTimer();
+  const u = S.lunits[lu];
+  if (!u) return S.runits.length ? startReading() : submit();
+  const first = S.lgroups.indexOf(u.groups[0]);
+  const q0 = u.groups[0].questions[0];
+  const qN = u.groups.at(-1).questions.at(-1);
+  const d0 = S.lDisp[q0.no], d1 = S.lDisp[qN.no];
+  $("#hudQ").textContent = "Directions";
+  hudSection.textContent = t("hudL", u.name);
+  app.innerHTML = `<div class="simpanel"><h2>Listening · ${esc(u.name)}</h2>
+   <p>${t("lUnitIntro", u.name, d0, d1, S.lCount)}</p>
+   <p class="muted">${t("lUnitIntroNote")}</p>
+   <div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>${t("simNowPlaying")}</span></div></div>`;
+  simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
+  // Replay overview directions briefly for UNIT TWO; UNIT ONE continues to Part 1 directions.
+  const clip = lu > 0 ? (S.vid === "ip" ? "dir_overview_ip" : "dir_overview_full") : null;
+  let ready = false;
+  const goPart = () => { if (!S) return; AudioEng.stop(); listenPartDir(first); };
+  $("#simNext").onclick = goPart;
+  if (clip) {
+    AudioEng.play(dirAudioUrl(clip), () => { const ls = $("#ls"); if (ls) ls.innerHTML = `<span>${t("dirAudioDone")}</span>`; }).catch(() => {});
+  } else {
+    const ls = $("#ls"); if (ls) ls.innerHTML = `<span class="muted">${t("clickNextPart")}</span>`;
+  }
+}
+
+/** Part directions screen (Next). Plays part direction audio. */
+function listenPartDir(groupIndex) {
+  const g = S.lgroups[groupIndex];
+  if (!g) return listenAfterGroup(groupIndex - 1);
+  S.phase = "L-dir"; S.li = groupIndex; hideListeningTimer();
+  $("#hudQ").textContent = "Directions";
+  hudSection.textContent = t("hudL", g._unit.name);
+  const partClip = "dir_part" + g.part;
+  app.innerHTML = `<div class="simpanel"><h2>${PART_ZH[g.part]}</h2>
+   <p><b>Directions:</b> ${PART_DIR_ZH[g.part]}</p>
+   <p class="muted">${t("dirClickNext")}</p>
+   <div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>${t("simNowPlaying")}</span></div></div>`;
+  simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
+  $("#simNext").onclick = () => { AudioEng.stop(); playGroup(groupIndex); };
+  AudioEng.play(dirAudioUrl(partClip), () => { const ls = $("#ls"); if (ls) ls.innerHTML = `<span>${t("dirAudioDone")}</span>`; }).catch(() => {});
+}
+
+function listenAfterGroup(i) {
+  const g = S.lgroups[i], next = S.lgroups[i + 1];
+  if (!next) {
+    // End of listening — play end clip then reading
+    S.phase = "L-dir";
+    app.innerHTML = `<div class="simpanel center"><h2>${t("lEndTitle")}</h2><p class="muted">${t("lEndNote")}</p></div>`;
+    simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
+    const goR = () => { AudioEng.stop(); AudioEng.prune([]); return S.runits.length ? startReading() : submit(); };
+    $("#simNext").onclick = goR;
+    AudioEng.play(dirAudioUrl("dir_end_listening"), () => setTimeout(goR, 500)).catch(goR);
+    return;
+  }
+  // Unit boundary → UNIT TWO transition (repeat directions)
+  if (g._unit !== next._unit) {
+    const lu = S.lunits.findIndex(u => u === next._unit);
+    return listenUnitIntro(lu);
+  }
+  // Part boundary → part directions
+  if (g.part !== next.part) return listenPartDir(i + 1);
+  return playGroup(i + 1);
+}
+
 async function playGroup(i) {
-  S.li = i;
+  S.li = i; S.phase = "L"; clearTimeout(S.ansTimer); S.ansDeadline = 0;
   window.scrollTo(0, 0);
   const g = S.lgroups[i];
   if (!g) { AudioEng.prune([]); return S.runits.length ? startReading() : submit(); }
+  hideListeningTimer();
   const done = S.lgroups.slice(0, i).reduce((a, x) => a + x.questions.length, 0);
-  const firstOfPart = i === 0 || S.lgroups[i - 1].part !== g.part || S.lgroups[i - 1]._unit !== g._unit;
   hudSection.textContent = t("hudL", g._unit.name);
   let body = "";
   const q0 = g.questions[0];
-  if (g.part === 1) body = `${photoHTML(g)}<div class="qblock"><div class="qtext"><span class="qno">${q0.no}.</span>${t("p1Prompt")}</div>${optsHTML(q0, false, 4)}</div>`;
-  else if (g.part === 2) body = `<div class="qblock"><div class="qtext"><span class="qno">${q0.no}.</span>${t("p2Prompt")}</div>${optsHTML(q0, false, 3)}</div>`;
-  else body = gfxHTML(g) + g.questions.map(q => `<div class="qblock"><div class="qtext"><span class="qno">${q.no}.</span>${esc(q.q)}</div>${optsHTML(q, true)}</div>`).join("");
-  if (S.sim) { $("#hudQ").textContent = `Question ${q0.no}${g.questions.length > 1 ? "–" + g.questions.at(-1).no : ""}`; simBar(`<span class="muted">Listening · ${PART_ZH[g.part]} · ${t("simAutoPlay")}</span>`); }
-  app.innerHTML = S.sim ? `<div class="simpanel listen">${firstOfPart ? `<div class="dirnote">${PART_DIR_ZH[g.part]}</div>` : ""}
+  if (g.part === 1) body = `${photoHTML(g)}<div class="qblock"><div class="qtext"><span class="qno">${S.lDisp[q0.no] || q0.no}.</span>${t("p1Prompt")}</div>${optsHTML(q0, false, 4)}</div>`;
+  else if (g.part === 2) body = `<div class="qblock"><div class="qtext"><span class="qno">${S.lDisp[q0.no] || q0.no}.</span>${t("p2Prompt")}</div>${optsHTML(q0, false, 3)}</div>`;
+  else body = gfxHTML(g) + g.questions.map(q => `<div class="qblock"><div class="qtext"><span class="qno">${S.lDisp[q.no] || q.no}.</span>${esc(q.q)}</div>${optsHTML(q, true)}</div>`).join("");
+  const ansBox = `<div class="ansleft${showAnsTimer() ? "" : " hidden"}" id="ansLeft"></div>`;
+  if (S.sim) {
+    $("#hudQ").textContent = `Question ${S.lDisp[q0.no] || q0.no}${g.questions.length > 1 ? "–" + (S.lDisp[g.questions.at(-1).no] || g.questions.at(-1).no) : ""}`;
+    simBar(`<span class="muted">Listening · ${PART_ZH[g.part]} · ${t("simAutoPlay")}</span>${ansBox}`);
+  }
+  app.innerHTML = S.sim ? `<div class="simpanel listen">
    <div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>${t("simNowPlaying")}</span></div>
-   ${g.part === 2 ? `<div class="qtext"><span class="qno">${q0.no}.</span>Mark your answer on your answer sheet.</div>${optsHTML(q0, false, 3)}` : body}</div>
+   ${g.part === 2 ? `<div class="qtext"><span class="qno">${S.lDisp[q0.no] || q0.no}.</span>${t("p2OnlinePrompt")}</div>${optsHTML(q0, false, 3)}` : body}</div>
    ${DEBUG ? `<button class="btn ghost small" id="dbgSkip">${t("dbgSkip")}</button>` : ""}` : `<div class="progress"><i style="width:${done / S.lCount * 100}%"></i></div>
-   <div class="partbar"><span>${PART_ZH[g.part]}</span><span>${q0.no}${g.questions.length > 1 ? "–" + g.questions.at(-1).no : ""}</span></div>
-   ${firstOfPart ? `<div class="dirnote">${PART_DIR_ZH[g.part]}</div>` : ""}
-   <div class="card"><div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>${t("nowPlaying")}</span></div>${body}</div>
+   <div class="partbar"><span>${PART_ZH[g.part]}</span><span>${S.lDisp[q0.no] || q0.no}${g.questions.length > 1 ? "–" + (S.lDisp[g.questions.at(-1).no] || g.questions.at(-1).no) : ""}</span></div>
+   <div class="card"><div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>${t("nowPlaying")}</span></div>${body}${ansBox}</div>
    ${DEBUG ? `<button class="btn ghost small" id="dbgSkip">${t("dbgSkip")}</button>` : ""}`;
   bindOpts(app);
-  if (DEBUG) $("#dbgSkip").onclick = () => AudioEng.skip();
+  if (DEBUG) $("#dbgSkip").onclick = () => { clearTimeout(S.ansTimer); AudioEng.skip(); };
   const url = AudioStore.url(g.audio), next = S.lgroups[i + 1] ? AudioStore.url(S.lgroups[i + 1].audio) : null;
-  AudioEng.prune([url, next]);
+  AudioEng.prune([url, next].filter(Boolean));
   if (next) AudioEng.load(next);
+  const afterAudio = () => {
+    if (!S || S.li !== i) return;
+    // Fixed answer window after audio; unanswered stay undefined
+    const gap = FAST ? 2 : (ANSWER_GAP[g.part] || 5);
+    S.phase = "L-gap";
+    S.ansDeadline = Date.now() + gap * 1000;
+    const ls = $("#ls");
+    if (ls) ls.innerHTML = `<span>${t("ansWindow")}</span>`;
+    if (showAnsTimer()) {
+      const el = $("#ansLeft"); if (el) { el.classList.remove("hidden"); el.textContent = t("ansLeft", gap); }
+    }
+    S.ansTimer = setTimeout(() => {
+      if (!S || S.li !== i) return;
+      S.ansDeadline = 0;
+      if (S.sim) listenAfterGroup(i); else playGroup(i + 1);
+    }, gap * 1000);
+  };
   try {
-    await AudioEng.play(url, () => { if (S && S.phase === "L" && S.li === i) playGroup(i + 1); });
+    await AudioEng.play(url, afterAudio);
   } catch (e) {
     const ls = $("#ls"); if (!ls) return;
     ls.innerHTML = `<span style="color:#dc2626">${t("playFail")}</span> <button class="btn small" id="retryA">${t("retry")}</button>`;
@@ -467,7 +622,7 @@ function startReading() {
   if (S.sim) return simReadingIntro();
   S.phase = "R-gate";
   hudSection.textContent = t("hudReading");
-  hudTimer.textContent = fmt(S.runits[0].time);
+  showReadingTimer(S.runits[0].time);
   app.innerHTML = `<div class="card gate"><div class="big">📖</div><h2>${S.lgroups.length ? t("rGateAfterL") : t("rGateOnly")}</h2>
    <p>${S.runits.map(u => t("rUnitLine", u.name, Math.round(u.time / 60), u.groups.reduce((a, g) => a + g.questions.length, 0))).join("<br>")}</p><p class="muted">${t("rGateNote")}</p>
    <button class="btn block" id="rStart">${t("rStart")}</button></div>`;
@@ -475,22 +630,28 @@ function startReading() {
 }
 function startReadingUnit(ru) {
   hideOverlay();
-  S.phase = "R"; S.ru = ru; S.rg = 0;
+  S.phase = "R"; S.ru = ru; S.rg = 0; S.ri = 0; S.timeupShown = false;
   const u = S.runits[ru];
-  S.rDeadline = Date.now() + u.time * 1000; hudTimer.textContent = fmt(u.time);
+  S.rDeadline = Date.now() + u.time * 1000;
+  showReadingTimer(u.time);
   hudSection.textContent = t("hudR", u.name);
   if (S.sim) return simUnitDir();
   renderReadingGroup();
 }
 const lastUnit = () => S.ru === S.runits.length - 1;
+function unitRange(u) {
+  const nos = u.groups.flatMap(g => g.questions.map(q => S.rDisp[q.no]));
+  return [Math.min(...nos), Math.max(...nos)];
+}
 function renderReadingGroup(scrollToNo) {
   const u = S.runits[S.ru], g = u.groups[S.rg];
   const last = S.rg === u.groups.length - 1;
-  const qs = g.questions.map(q => `<div class="qblock" id="q${q.no}"><div class="qhead"><div class="qtext"><span class="qno">${q.no}.</span>${q.q ? inline(q.q) : t("blankPrompt", q.no)}</div>
+  const qs = g.questions.map(q => `<div class="qblock" id="q${q.no}"><div class="qhead"><div class="qtext"><span class="qno">${S.rDisp[q.no] || q.no}.</span>${q.q ? inline(q.q) : t("blankPrompt", S.rDisp[q.no] || q.no)}</div>
      <button class="flagbtn${S.flags[q.no] ? " on" : ""}" data-flag="${q.no}">🚩 ${S.flags[q.no] ? t("flagged") : t("flag")}</button></div>${optsHTML(q, true)}</div>`).join("");
   const all = u.groups.flatMap(x => x.questions);
   const answered = all.filter(q => S.answers[q.no] !== undefined).length;
-  app.innerHTML = `<div class="partbar"><span>${PART_ZH[g.part]}</span><span>${t("answered", answered, all.length)}</span></div>
+  const [a, b] = unitRange(u);
+  app.innerHTML = `<div class="partbar"><span>${PART_ZH[g.part]}</span><span>${t("answered", answered, all.length)}</span><span class="muted">${t("rRange", a, b, S.rTotal)}</span></div>
    ${g.part === 5 && (S.rg === 0 || u.groups[S.rg - 1].part !== 5) ? `<div class="dirnote">${t("dir5")}</div>` : ""}
    ${g.part === 6 ? `<div class="dirnote">${t("dir6")}</div>` : ""}
    ${g.part === 7 ? `<div class="dirnote">${t("dir7")}</div>` : ""}
@@ -518,21 +679,22 @@ function updatePaletteState() {
 function openPalette() {
   const u = S.runits[S.ru];
   const items = u.groups.flatMap((g, gi) => g.questions.map(q => ({q, gi})));
-  const un = items.filter(x => S.answers[x.q.no] === undefined).length;
+  const un = items.filter(x => S.answers[x.q.no] === undefined);
   const fl = items.filter(x => S.flags[x.q.no]).length;
   const endTxt = lastUnit() ? t("submitBtn") : t("enterUnit", S.runits[S.ru + 1].name);
   overlay.dataset.dismiss = "1";
   showOverlay(`<h2>${esc(t("palTitle", u.name))}</h2>
    <p class="muted">${t("palNote")}</p>
-   <div class="palette">${items.map(x => `<button class="pal${S.answers[x.q.no] !== undefined ? " done" : ""}${S.flags[x.q.no] ? " flag" : ""}${x.gi === S.rg ? " cur" : ""}" data-gi="${x.gi}" data-no="${x.q.no}">${x.q.no}</button>`).join("")}</div>
-   <p>${t("palCounts", un, fl)}</p>
+   <div class="palette">${items.map(x => `<button class="pal${S.answers[x.q.no] !== undefined ? " done" : ""}${S.flags[x.q.no] ? " flag" : ""}${x.gi === S.rg ? " cur" : ""}" data-gi="${x.gi}" data-no="${x.q.no}">${S.rDisp[x.q.no] || x.q.no}</button>`).join("")}</div>
+   <p>${t("palCounts", un.length, fl)}</p>
+   ${un.length ? `<p class="muted">${t("unansweredList", un.map(x => S.rDisp[x.q.no] || x.q.no).join(", "))}</p>` : ""}
    <p class="muted">${lastUnit() ? t("noChangeAfterSubmit") : t("noReturnNext")}</p>
    <div class="row"><button class="btn ghost" id="palClose">${t("continueAnswer")}</button>
    <button class="btn ${lastUnit() ? "warn" : ""}" id="palEnd">${endTxt}</button></div>`, false);
   overlay.querySelectorAll(".pal").forEach(b => b.onclick = () => { hideOverlay(); S.rg = +b.dataset.gi; renderReadingGroup(+b.dataset.no); });
   $("#palClose").onclick = hideOverlay;
   $("#palEnd").onclick = () => {
-    if (un && !confirm(t("confirmUnanswered", un, endTxt))) return;
+    if (un.length && !confirm(t("confirmUnanswered", un.length, endTxt))) return;
     hideOverlay();
     if (!lastUnit()) startReadingUnit(S.ru + 1); else submit();
   };
@@ -799,15 +961,18 @@ function simOverview() {
   $("#simBack").onclick = simAgree; $("#simNext").onclick = simMode;
 }
 function simMode() {
-  const V = DATA.variants, order = ["full", "ip", "L", "R"].filter(k => V[k]);
+  const V = DATA.variants, main = ["ip", "full"].filter(k => V[k]), practice = ["L", "R"].filter(k => V[k]);
   app.innerHTML = `<div class="simpanel"><h2>Select Test Mode <small>${t("modeSub")}</small></h2>
-   ${order.map((k, i) => `<label class="radio card"><input type="radio" name="mode" value="${k}" ${i === 0 ? "checked" : ""}> <b>${esc(vName(V[k]))}</b><br><span class="muted">${esc(vDesc(V[k]))}</span></label>`).join("")}</div>`;
+   <p class="muted">${t("modeMainHint")}</p>
+   ${main.map((k, i) => `<label class="radio card mode-main"><input type="radio" name="mode" value="${k}" ${i === 0 ? "checked" : ""}> <b>${esc(vName(V[k]))}</b><br><span class="muted">${esc(vDesc(V[k]))}</span></label>`).join("")}
+   ${practice.length ? `<h3 class="mode-sec">${t("practiceModes")}</h3>` : ""}
+   ${practice.map(k => `<label class="radio card"><input type="radio" name="mode" value="${k}"> <b>${esc(vName(V[k]))}</b><br><span class="muted">${esc(vDesc(V[k]))}</span></label>`).join("")}</div>`;
   simBar(`<button class="btn ghost" id="simBack">‹ Back</button><button class="btn" id="simNext">${t("startGo")}</button>`);
   $("#simBack").onclick = simOverview;
   $("#simNext").onclick = () => { const v = app.querySelector("[name=mode]:checked").value; AudioEng.unlock(); startExam(buildVariant(v)); };
 }
 function simReadingIntro() {
-  S.phase = "R-gate"; hudSection.textContent = t("hudReadingSim"); hudTimer.textContent = fmt(S.runits[0].time); $("#hudQ").textContent = "";
+  S.phase = "R-gate"; hudSection.textContent = t("hudReadingSim"); showReadingTimer(S.runits[0].time); $("#hudQ").textContent = "";
   app.innerHTML = `<div class="simpanel"><h2>Reading Test <small>${t("rSub")}</small></h2>
    <p>In the Reading test, you will read a variety of texts and answer several types of reading comprehension questions. Answer as many questions as possible within the time allowed.</p>
    <p class="muted">${S.lgroups.length ? t("lDone") : ""}${t("rInfo", S.runits.map(u => t("rUnitSlash", u.name, Math.round(u.time / 60), u.groups.reduce((a, g) => a + g.questions.length, 0))).join(t("listSep")))}</p></div>`;
@@ -817,11 +982,14 @@ function simReadingIntro() {
 function simUnitDir() {
   const u = S.runits[S.ru];
   S.ritems = u.groups.flatMap(g => g.questions.map(q => ({q, g})));
+  S.phase = "R-dir";
+  const [a, b] = unitRange(u);
   $("#hudQ").textContent = "Directions";
+  hudSection.textContent = `Reading · Questions ${a}–${b} of ${S.rTotal}`;
   app.innerHTML = `<div class="simpanel"><h2>Reading · ${esc(u.name)}</h2>
    <h3>Part 5 · Incomplete Sentences ${t("p5Sub")}</h3>
-   <p><b>Directions:</b> Each sentence below is missing a word or phrase. Four answer choices are given. Select the choice that best completes the sentence.</p>
-   <p class="muted">${t("unitInfo", S.ritems.length, Math.round(u.time / 60))}</p></div>`;
+   <p><b>Directions:</b> Each sentence below is missing a word or phrase. Four answer choices are given. Select the choice that best completes the sentence, then click on your answer.</p>
+   <p class="muted">${t("unitInfo", S.ritems.length, Math.round(u.time / 60))} · ${t("rRange", a, b, S.rTotal)}</p></div>`;
   simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
   $("#simNext").onclick = () => simQ(0);
 }
@@ -831,42 +999,74 @@ function simQ(i) {
   const {q, g} = S.ritems[i], prev = S.ritems[i - 1];
   const newPart = g.part !== 5 && (!prev || prev.g.part !== g.part);
   const hasDoc = g.docs && g.docs.length;
-  $("#hudQ").textContent = `Question ${q.no}`;
+  const u = S.runits[S.ru];
+  const [a, b] = unitRange(u);
+  const dno = S.rDisp[q.no] || q.no;
+  $("#hudQ").textContent = `Question ${dno}`;
+  hudSection.textContent = `Reading · Questions ${a}–${b} of ${S.rTotal}`;
   app.innerHTML = `<div class="simq${hasDoc ? " split" : ""}">
    ${hasDoc ? `<div class="simdoc">${newPart ? `<div class="dirnote">${SIM_DIR[g.part]}</div>` : ""}${docsHTML(g)}</div>` : ""}
    <div class="simask">
-    <div class="qhead"><div class="qnum">Question ${q.no} <span class="muted">(${i + 1} / ${S.ritems.length})</span></div>
+    <div class="qhead"><div class="qnum">Question ${dno} <span class="muted">(${i + 1} / ${S.ritems.length})</span></div>
      <label class="mark"><input type="checkbox" id="markQ" ${S.flags[q.no] ? "checked" : ""}> ${t("markLbl")}</label></div>
-    <div class="qtext">${q.q ? inline(q.q) : t("simBlank", q.no)}</div>
+    <div class="qtext">${q.q ? inline(q.q) : t("simBlank", dno)}</div>
     ${optsHTML(q, true)}</div></div>`;
   bindOpts(app);
   $("#markQ").onchange = e => { S.flags[q.no] = e.target.checked; };
-  simBar(`<button class="btn ghost" id="simBack" ${i === 0 ? "disabled" : ""}>‹ Back</button><button class="btn ghost" id="simRev">Review</button><button class="btn" id="simNext">Next ›</button>`);
+  simBar(`<button class="btn ghost" id="simBack" ${i === 0 ? "disabled" : ""}>‹ Back</button><label class="mark simbar-mark"><input type="checkbox" id="markQ2" ${S.flags[q.no] ? "checked" : ""}> Mark item for review</label><button class="btn ghost" id="simRev">Review</button><button class="btn" id="simNext">Next ›</button>`);
+  const syncMark = e => { S.flags[q.no] = e.target.checked; const o = $("#markQ"); if (o) o.checked = e.target.checked; };
+  $("#markQ2").onchange = syncMark;
   $("#simBack").onclick = () => simQ(i - 1);
-  $("#simRev").onclick = () => simReview();
-  $("#simNext").onclick = () => i + 1 < S.ritems.length ? simQ(i + 1) : simReview();
+  $("#simRev").onclick = () => simReview("all");
+  $("#simNext").onclick = () => i + 1 < S.ritems.length ? simQ(i + 1) : simReview("all");
   window.scrollTo(0, 0); const sd = app.querySelector(".simdoc"); if (sd) sd.scrollTop = 0;
 }
-function simReview() {
+function simReview(filter = "all") {
+  S.phase = "R-rev";
   const u = S.runits[S.ru], items = S.ritems;
-  const un = items.filter(x => S.answers[x.q.no] === undefined).length, fl = items.filter(x => S.flags[x.q.no]).length;
+  const unItems = items.filter(x => S.answers[x.q.no] === undefined);
+  const flItems = items.filter(x => S.flags[x.q.no]);
+  const un = unItems.length, fl = flItems.length;
+  const [a, b] = unitRange(u);
   $("#hudQ").textContent = "Review";
+  hudSection.textContent = `Reading · Questions ${a}–${b} of ${S.rTotal}`;
+  const shown = filter === "marked" ? items.filter(x => S.flags[x.q.no])
+              : filter === "unanswered" ? items.filter(x => S.answers[x.q.no] === undefined)
+              : items;
+  const status = x => {
+    const done = S.answers[x.q.no] !== undefined, mark = !!S.flags[x.q.no];
+    return `<span class="rv-ico">${done ? "✓" : "!"}</span>${mark ? '<span class="rv-flag">⚑</span>' : ""}`;
+  };
   app.innerHTML = `<div class="simpanel"><h2>Review · ${esc(u.name)}</h2>
    <p class="muted">${t("revNote", un, fl)}</p>
-   <div class="revgrid">${items.map((x, i) => `<button class="rvit${S.answers[x.q.no] !== undefined ? " done" : ""}${S.flags[x.q.no] ? " flag" : ""}" data-i="${i}"><b>${x.q.no}</b><small>${S.answers[x.q.no] !== undefined ? "Answered" : "Not Answered"}${S.flags[x.q.no] ? " · ⚑" : ""}</small></button>`).join("")}</div></div>`;
-  app.querySelectorAll(".rvit").forEach(b => b.onclick = () => simQ(+b.dataset.i));
+   <div class="revfilters">
+    <button class="btn small${filter === "all" ? "" : " ghost"}" data-f="all">${t("revAll")}</button>
+    <button class="btn small${filter === "marked" ? "" : " ghost"}" data-f="marked">${t("revMarked")} (${fl})</button>
+    <button class="btn small${filter === "unanswered" ? "" : " ghost"}" data-f="unanswered">${t("revUnanswered")} (${un})</button>
+   </div>
+   <table class="revtable"><thead><tr><th>#</th><th>${t("revStatus")}</th><th></th></tr></thead>
+   <tbody>${shown.length ? shown.map((x) => {
+     const idx = items.indexOf(x); const dno = S.rDisp[x.q.no] || x.q.no;
+     const done = S.answers[x.q.no] !== undefined;
+     return `<tr class="rrow${done ? " done" : " miss"}${S.flags[x.q.no] ? " flag" : ""}" data-i="${idx}"><td><b>${dno}</b></td><td>${status(x)} <span class="muted">${done ? "Answered" : "Not Answered"}</span></td><td>›</td></tr>`;
+   }).join("") : `<tr><td colspan="3" class="muted">${t("revEmpty")}</td></tr>`}</tbody></table></div>`;
+  app.querySelectorAll(".revfilters [data-f]").forEach(b => b.onclick = () => simReview(b.dataset.f));
+  app.querySelectorAll(".rrow").forEach(b => b.onclick = () => simQ(+b.dataset.i));
   const last = lastUnit();
   simBar(`<button class="btn ghost" id="simRet">${t("simRet")}</button><button class="btn ${last ? "warn" : ""}" id="simEnd">${last ? t("finishTest") : t("nextUnit")}</button>`);
   $("#simRet").onclick = () => simQ(Math.min(S.ri || 0, items.length - 1));
   $("#simEnd").onclick = () => {
     overlay.dataset.dismiss = "1";
+    const unList = unItems.map(x => S.rDisp[x.q.no] || x.q.no);
     showOverlay(`<h2>${last ? t("feTitleLast") : t("feTitleUnit")}</h2>
      <p>${un ? t("feUn", un) : t("feAll")}${last ? t("noChangeAfterSubmit") : t("feUnit")}</p>
+     ${un && last ? `<p class="muted">${t("unansweredList", unList.join(", "))}</p>` : ""}
      <div class="row"><button class="btn ghost" id="feNo">${t("cancel2")}</button><button class="btn warn" id="feYes">${last ? "Finish Test" : "Finish Unit"}</button></div>`);
     $("#feNo").onclick = hideOverlay;
     $("#feYes").onclick = () => { hideOverlay(); if (last) submit(); else startReadingUnit(S.ru + 1); };
   };
 }
+
 function simCongrats(aid) {
   document.body.classList.add("sim");
   app.innerHTML = `<div class="simpanel center"><div class="big">🎉</div><h1>Congratulations!</h1><p>${t("congrats")}</p><p class="muted">${t("congratsNext")}</p></div>`;
@@ -874,7 +1074,7 @@ function simCongrats(aid) {
   $("#simNext").onclick = () => { simBar(null); go("#/result/" + aid); };
 }
 
-if (DEBUG) window.__t = {get S() { return S; }, AudioEng, loadHist};   // test hook (debug only)
+if (DEBUG || FAST) window.__t = {get S() { return S; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer};   // test hook
 /* ---------- boot ---------- */
 (async () => {
   if (!SIM && sessionStorage.getItem("ets950.sim") === "1") SIM = true;

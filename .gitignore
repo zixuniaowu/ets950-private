@@ -4,3 +4,10 @@
 *.json.plain
 node_modules/
 !audio/soundcheck.mp3
+!audio/dir_overview_full.mp3
+!audio/dir_overview_ip.mp3
+!audio/dir_part1.mp3
+!audio/dir_part2.mp3
+!audio/dir_part3.mp3
+!audio/dir_part4.mp3
+!audio/dir_end_listening.mp3

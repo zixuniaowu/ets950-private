@@ -118,7 +118,10 @@ body.sim .brand{font-size:15px;opacity:.85}
 body.sim .foot{display:none}
 body.sim .app{max-width:1180px;padding:66px 18px 86px;min-height:100vh;min-height:100dvh}
 body.sim .examhud{gap:16px}
-body.sim .timer{border-radius:4px;background:#111;font-size:18px;padding:3px 12px}
+body.sim .timer{border-radius:4px;background:#111;color:#fff;font-size:18px;padding:3px 12px;font-variant-numeric:tabular-nums}
+body.sim .timer.reading{background:#16a34a;color:#fff}
+body.sim .timer.reading.warn{background:#dc2626}
+body.sim .timer.hidden{visibility:hidden}
 body.sim .btn{border-radius:4px}
 .volwrap{position:relative;margin-left:10px}
 .volbtn{background:#555b61;color:#fff;border:1px solid #777;border-radius:4px;padding:5px 10px;font-size:14px;cursor:pointer}
@@ -171,3 +174,29 @@ body.sim .langsw{background:#fff}
 /* sim mode review: keep the correct / wrong answer letters visible */
 body.sim .opt.correct b{background:var(--ok);border-color:var(--ok);color:#fff}
 body.sim .opt.wrong b{background:var(--ng);border-color:var(--ng);color:#fff}
+
+/* IP Online review table + filters */
+.revfilters{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
+.revtable{width:100%;border-collapse:collapse;font-size:15px}
+.revtable th,.revtable td{border:1px solid #dbe1e8;padding:8px 10px;text-align:left}
+.revtable th{background:#f3f5f7;font-weight:600}
+.revtable tr.rrow{cursor:pointer}
+.revtable tr.rrow:hover{background:#f0f7ff}
+.revtable tr.miss{background:#fff7f7}
+.revtable tr.done{background:#f3faf5}
+.revtable tr.flag td:first-child{box-shadow:inset 3px 0 0 var(--flag)}
+.rv-ico{display:inline-block;min-width:1.2em;font-weight:700;color:#dc2626}
+.revtable tr.done .rv-ico{color:#16a34a}
+.rv-flag{margin-left:6px;color:#d97706}
+.ansleft{font-variant-numeric:tabular-nums;font-weight:700;color:#fbbf24;margin-left:10px}
+.ansleft.hidden{display:none}
+label.ans-tog{display:block;margin:10px 0;font-size:14px;color:var(--muted);cursor:pointer}
+.mode-main{border:2px solid var(--brand2)!important;background:#f0f7ff!important}
+.mode-sec{margin:18px 0 8px;font-size:15px;color:var(--muted);font-weight:600}
+.simpanel.timeup{max-width:560px;margin-top:8vh}
+.simbar-mark{color:#e5e7eb;margin:0 8px;font-size:13px}
+.simbar .ansleft{color:#fde68a}
+@media (max-width:760px){
+ .revfilters .btn{flex:1;min-width:0}
+ .simbar-mark{display:none}
+}
