@@ -2,7 +2,7 @@
  "v": 2,
  "kdf": "PBKDF2-SHA256",
  "iter": 600000,
- "salt": "1SQQN/3moCev1N3iVaUMDA==",
+ "salt": "CDwcTmSIEuL0n+aqBDYzkQ==",
  "cipher": "AES-256-GCM (12-byte IV prefix)",
  "tests": [
   {
@@ -31,7 +31,7 @@
     },
     "data": {
      "file": "t1.bin",
-     "size": 145222
+     "size": 212478
     }
    }
   }
