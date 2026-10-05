@@ -14,7 +14,7 @@ const vName = v => pick(v, "name"), vDesc = v => pick(v, "desc");
 function bindLang(rerender) {
   document.querySelectorAll(".langsw [data-lang]").forEach(b => b.onclick = e => { e.preventDefault(); if (b.dataset.lang !== window.I18N.lang) { window.I18N.set(b.dataset.lang); rerender(); } });
 }
-const HKEY = "ets950.history.v1", NKEY = "ets950.notebook.v1", PWKEY = "ets950.pw", PWMKEY = "ets950.pwMonth", TKEY = "ets950.tid", VKEY = "ets950.vol";
+const HKEY = "ets950.history.v1", NKEY = "ets950.notebook.v1", WKEY = "ets950.wronglog.v1", PWKEY = "ets950.pw", PWMKEY = "ets950.pwMonth", TKEY = "ets950.tid", VKEY = "ets950.vol";
 const SHELL = window.examShell || null;   // set by the Electron preload (desktop exam app)
 let SIM = !!SHELL;                          // IP-online style full-screen simulation mode
 
@@ -44,13 +44,24 @@ const AKEY = "ets950.ansTimer";                 // optional per-question remaini
 const showAnsTimer = () => localStorage.getItem(AKEY) === "1";
 const setAnsTimer = on => localStorage.setItem(AKEY, on ? "1" : "0");
 function inline(text) {
-  return esc(text)
+  const blank = (_, n) => {
+    const book = +n, d = (S && S.disp && S.disp[book] != null) ? S.disp[book] : book;
+    return `<span class="blank">(${d})</span>`;
+  };
+  let s = esc(text)
     .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
     .replace(/\*(.+?)\*/g, "<i>$1</i>")
-    .replace(/-{5,}\((\d+)\)/g, '<span class="blank">($1)</span>')
+    .replace(/-{5,}\((\d+)\)/g, blank)
     .replace(/-{5,}/g, '<span class="blank">　　　</span>')
     .replace(/\[([1-4])\]/g, '<span class="ins">[$1]</span>')
     .replace(/\n/g, "<br>");
+  if (S && S.ipMode && S.disp) {
+    s = s.replace(/\bQuestions?\s+(\d+)\s*[–-]\s*(\d+)/gi, (full, a, b) => {
+      const da = S.disp[+a], db = S.disp[+b];
+      return (da != null && db != null) ? `Questions ${da}–${db}` : full;
+    });
+  }
+  return s;
 }
 function tableHTML(rows, title) {
   return `<table class="graphic">${title ? `<caption>${esc(title)}</caption>` : ""}<tr>${rows[0].map(c => `<th>${inline(c)}</th>`).join("")}</tr>${rows.slice(1).map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</table>`;
@@ -67,12 +78,106 @@ function blockHTML(b) {
     default: return `<p>${inline(b.x || "")}</p>`;
   }
 }
-const docsHTML = g => (g.intro ? `<div class="intro">${esc(g.intro)}</div>` : "") + (g.docs || []).map(d => `<div class="passage">${d.map(blockHTML).join("")}</div>`).join("");
+const docsHTML = g => (g.intro ? `<div class="intro">${inline(g.intro)}</div>` : "") + (g.docs || []).map(d => `<div class="passage">${d.map(blockHTML).join("")}</div>`).join("");
 const loadJ = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const loadHist = () => loadJ(HKEY, []);
 const saveHist = h => localStorage.setItem(HKEY, JSON.stringify(h.slice(-50)));
 const loadNote = () => loadJ(NKEY, {});
 const saveNote = n => localStorage.setItem(NKEY, JSON.stringify(n));
+
+const loadWrongLog = () => loadJ(WKEY, []);
+const saveWrongLog = rows => localStorage.setItem(WKEY, JSON.stringify(rows.slice(-2000)));
+
+/** Heuristic question-type tag for export / daily audio lessons. */
+function qTypeTag(g, q) {
+  const p = g.part;
+  if (p === 1) return "Part1-photo";
+  if (p === 2) {
+    const stem = (g.script && g.script[0] && g.script[0].text) || "";
+    const s = String(stem).toLowerCase();
+    if (/^(who|whose)\b/.test(s)) return "Part2-who";
+    if (/^(where)\b/.test(s)) return "Part2-where";
+    if (/^(when)\b/.test(s)) return "Part2-when";
+    if (/^(why)\b/.test(s)) return "Part2-why";
+    if (/^(how)\b/.test(s)) return "Part2-how";
+    if (/^(what)\b/.test(s)) return "Part2-what";
+    if (/^(which)\b/.test(s)) return "Part2-which";
+    if (/\?$/.test(s) && /^(is|are|do|does|did|can|could|will|would|have|has)\b/.test(s)) return "Part2-yesno";
+    return "Part2-other";
+  }
+  if (p === 3) return g.graphic ? "Part3-graphic" : "Part3-conversation";
+  if (p === 4) return g.graphic ? "Part4-graphic" : "Part4-talk";
+  if (p === 5) {
+    const opts = (q.options || []).filter(Boolean).map(o => String(o).toLowerCase());
+    const joined = opts.join(" ");
+    if (opts.some(o => /^(in|on|at|by|for|with|to|from|of|about|into|over|under)$/.test(o))) return "Part5-preposition";
+    if (opts.some(o => /(ly)$/.test(o)) && opts.length >= 3) return "Part5-adverb";
+    if (opts.some(o => /(tion|sion|ness|ment|ity)$/.test(o))) return "Part5-noun";
+    if (/ed\b|ing\b/.test(joined)) return "Part5-verb-form";
+    return "Part5-grammar";
+  }
+  if (p === 6) return "Part6-blank";
+  if (p === 7) {
+    const qq = String(q.q || "").toLowerCase();
+    if (/purpose|why (is|are|was|were|did|do|does)|intended to/.test(qq)) return "Part7-purpose";
+    if (/not (true|mentioned|indicated)|except|iincorrect/.test(qq) || /NOT\b/.test(q.q || "")) return "Part7-NOT";
+    if (/synonym|closest in meaning|what is meant/.test(qq)) return "Part7-vocab";
+    if (/when|what time|date|schedule/.test(qq)) return "Part7-detail-time";
+    if (/where|location|place/.test(qq)) return "Part7-detail-place";
+    if (/who|whom|whose|name/.test(qq)) return "Part7-detail-who";
+    if (/how much|how many|cost|price|fee/.test(qq)) return "Part7-detail-number";
+    if (/infer|imply|suggest|most likely/.test(qq)) return "Part7-inference";
+    return "Part7-detail";
+  }
+  return "Part" + p;
+}
+
+function tokyoDateStr(d = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
+function recordWrongLog(att, qs) {
+  const rows = loadWrongLog();
+  const day = tokyoDateStr(new Date(att.date || Date.now()));
+  const tid = att.tid || "t1";
+  const testLabel = att.testLabel || tid;
+  const vid = att.vid || "";
+  for (const { q, g } of qs) {
+    const mine = att.answers[q.no];
+    if (mine === q.answer) continue;
+    const ip = att.disp && att.disp[q.no] != null ? att.disp[q.no] : null;
+    const key = `${tid}|${q.no}|${vid}`;
+    let row = rows.find(r => `${r.tid}|${r.book}|${r.mode}` === key);
+    if (!row) {
+      row = {
+        id: `${att.id}:${q.no}`, tid, test: testLabel, version: isIpVid(vid) ? vid.slice(-1) : "",
+        mode: vid, date: day, iso: att.date, book: q.no, ip, part: g.part,
+        you: mine === undefined ? "-" : LET[mine], ans: LET[q.answer], tag: qTypeTag(g, q), n: 0,
+      };
+      rows.push(row);
+    }
+    row.n = (row.n || 0) + 1;
+    row.date = day; row.iso = att.date; row.you = mine === undefined ? "-" : LET[mine];
+    row.ip = ip; row.tag = qTypeTag(g, q); row.ans = LET[q.answer];
+  }
+  saveWrongLog(rows);
+}
+
+function wrongLogExportText(rows) {
+  if (!rows.length) return "# ETS950 wrong-log empty\n";
+  const dates = rows.map(r => r.date).filter(Boolean).sort();
+  const head = `# ETS950 wrong-log ${dates[0]}..${dates[dates.length - 1]} (JST)\n# line: TEST MODE Qbook[IPn] Pn you:X ans:Y tag:TAG[ ×N]\n# example: T1 IP-A Q79[IP25] P4 you:C ans:D tag:Part4-talk\n`;
+  const lines = rows.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.book - b.book)).map(r => {
+    const tcode = r.tid === "t2" ? "T2" : "T1";
+    const ver = r.version ? `-${r.version}` : "";
+    const mode = isIpVid(r.mode) ? `IP${ver}` : (r.mode || "full");
+    const ip = r.ip != null ? `[IP${r.ip}]` : "";
+    const times = r.n > 1 ? ` ×${r.n}` : "";
+    return `${tcode} ${mode} Q${r.book}${ip} P${r.part} you:${r.you} ans:${r.ans} tag:${r.tag}${times}`;
+  });
+  return head + lines.join("\n") + "\n";
+}
+
 
 /* ---------- crypto ---------- */
 let META = null, KEY = null, DATA = null, TESTS = {}, TID = null, UNLOCK_YM = null;
@@ -176,6 +281,21 @@ function buildVariant(vid) {
   })}));
   return {id: vid, title: dTitle(DATA) + " · " + vName(v), name: vName(v), count: v.count, sections};
 }
+
+function isIpVid(vid) { return !!(vid && String(vid).startsWith("ip")); }
+/** Display number for UI during exam: IP continuous 1–90, else book number. */
+function dNo(no) { return (S && S.disp && S.disp[no] != null) ? S.disp[no] : no; }
+/** Label for results/review/notebook: IP shows "12（原书第 34 题）". */
+function qLabel(no) {
+  if (S && S.disp && S.disp[no] != null) return String(S.disp[no]);
+  return String(no);
+}
+function qLabelFromAttempt(a, bookNo) {
+  if (!a || !isIpVid(a.vid) || !a.disp) return String(bookNo);
+  const ip = a.disp[bookNo];
+  return ip != null ? t("ipQLabel", ip, bookNo) : String(bookNo);
+}
+
 function allQuestions(test) {
   const out = [];
   for (const s of test.sections) for (const u of s.units) for (const g of u.groups) for (const q of g.questions) out.push({q, g, u, s});
@@ -183,7 +303,7 @@ function allQuestions(test) {
 }
 function groupOfQ(no) { for (const g of Object.values(DATA.groups)) for (const q of g.questions) if (q.no === no) return {g, q}; return null; }
 
-let T = null, S = null;
+let T = null, S = null, REVIEW_ATT = null;
 function setHud(on) { hud.classList.toggle("hidden", !on); $("#foot").classList.toggle("hidden", on || SIM); $("#hudQ").textContent = ""; }
 function showOverlay(html, center = true) { overlay.innerHTML = `<div class="sheet">${html}</div>`; overlay.classList.toggle("center", center); overlay.classList.remove("hidden"); }
 function hideOverlay() { overlay.classList.add("hidden"); overlay.innerHTML = ""; }
@@ -199,10 +319,12 @@ async function route() {
   if (!DATA) return renderLock();
   const h = location.hash || "#/";
   if (S && !S.done && !h.startsWith("#/exam")) abortExam();
+  if (h.startsWith("#/ipver")) return renderIpVersions();
   if (h.startsWith("#/intro/")) return renderIntro(h.split("/")[2]);
   if (h.startsWith("#/result/")) return renderResult(h.split("/")[2]);
   if (h.startsWith("#/review/")) return renderReview(h.split("/")[2]);
   if (h.startsWith("#/notebook")) return renderNotebook();
+  if (h.startsWith("#/wronglog")) return renderWrongLog();
   if (h.startsWith("#/history")) return renderHistoryPage();
   if (h.startsWith("#/exam")) { if (!S) return go("#/"); return; }
   renderHome();
@@ -270,6 +392,7 @@ function renderHome() {
   setHud(false); S = null;
   if (SIM) return simHome();
   const nbo = loadNote(), nb = Object.keys(nbo).filter(k => !nbo[k].ok && noteNo(k) !== null).length;
+  const wlN = loadWrongLog().length;
   const V = DATA.variants;
   const modeChip = k => {
     if (k === "ip") return `<span class="chip">⏱ 60 min</span><span class="chip">90 Q</span><span class="chip">IP Online</span>`;
@@ -286,11 +409,12 @@ function renderHome() {
   <div class="card"><h2>${t("simCardTitle")}</h2><p class="muted">${t("simCardDesc")}</p>
    <button class="btn block" id="simEnter">${t("simEnter")}</button></div>
   <div class="card modes"><h2>${t("chooseMode")}</h2>
-  <div class="mode-grid main">${["ip","full"].filter(k => V[k]).map(k => `<a class="mode-card primary" href="#/intro/${k}"><div class="mode-kicker">${k === "ip" ? "IP Online" : "Full Test"}</div><h3>${esc(vName(V[k]))}</h3><p class="muted">${esc(vDesc(V[k]))}</p><div class="mode-meta">${modeChip(k)}</div><span class="btn block" style="margin-top:10px;pointer-events:none">${t("start")}</span></a>`).join("")}</div>
+  <div class="mode-grid main">${(V.ipA ? [`<a class="mode-card primary" href="#/ipver"><div class="mode-kicker">IP Online</div><h3>${esc(t("ipModeTitle"))}</h3><p class="muted">${esc(t("ipModeDesc"))}</p><div class="mode-meta">${modeChip("ip")}</div><span class="btn block" style="margin-top:10px;pointer-events:none">${t("chooseVer")}</span></a>`] : []).concat(V.full ? [`<a class="mode-card primary" href="#/intro/full"><div class="mode-kicker">Full Test</div><h3>${esc(vName(V.full))}</h3><p class="muted">${esc(vDesc(V.full))}</p><div class="mode-meta">${modeChip("full")}</div><span class="btn block" style="margin-top:10px;pointer-events:none">${t("start")}</span></a>`] : []).join("")}</div>
   <h3 class="mode-sec">${t("practiceModes")}</h3>
   <div class="nav-tiles">${["L","R"].filter(k => V[k]).map(k => `<a class="nav-tile" href="#/intro/${k}"><strong>${esc(vName(V[k]))}</strong><span>${esc(vDesc(V[k]))}</span></a>`).join("")}</div></div>
   <div class="nav-tiles" style="margin:14px 0">
    <a class="nav-tile" href="#/notebook"><strong>${t("nbTitle")}</strong><span>${t("nbCount", nb)}</span></a>
+   <a class="nav-tile" href="#/wronglog"><strong>${t("wrongLogTitle")}</strong><span>${t("wrongLogCount", wlN)}</span></a>
    <a class="nav-tile" href="#/history"><strong>${t("simHist")}</strong><span>${t("histTitle")}</span></a>
   </div>
   ${historyCard()}
@@ -304,6 +428,24 @@ function renderHome() {
 }
 
 /* ---------- intro ---------- */
+
+function renderIpVersions() {
+  setHud(false); S = null;
+  const V = DATA.variants;
+  const cards = ["A", "B", "C"].map(ver => {
+    const k = "ip" + ver;
+    const v = V[k]; if (!v) return "";
+    return `<a class="mode-card" href="#/intro/${k}"><div class="mode-kicker">${t("ipVerKicker", ver)}</div>
+      <h3>${esc(vName(v))}</h3><p class="muted">${esc(vDesc(v))}</p>
+      <div class="mode-meta"><span class="chip">90 Q</span><span class="chip">⏱ 60 min</span><span class="chip">${t("ipVerTag", ver)}</span></div>
+      <span class="btn block" style="margin-top:10px;pointer-events:none">${t("start")}</span></a>`;
+  }).join("");
+  app.innerHTML = testPicker() + `<div class="card"><h2>${t("ipVerTitle")}</h2><p class="muted">${t("ipVerDesc")}</p>
+    <div class="mode-grid main">${cards}</div>
+    <p style="margin-top:12px"><a class="btn ghost" href="#/">${t("backBack")}</a></p></div>` + historyCard();
+  bindTestPicker(() => renderIpVersions());
+}
+
 function renderIntro(vid) {
   setHud(false);
   if (!DATA.variants[vid]) return go("#/");
@@ -402,12 +544,22 @@ function startExam(test) {
   S.lCount = S.lgroups.reduce((a, g) => a + g.questions.length, 0);
   const R = test.sections.find(s => s.id === "R");
   S.runits = R ? R.units.map(u => FAST ? Object.assign({}, u, {time: Math.min(u.time, 25)}) : u) : [];
-  // Display numbers for reading (1..N across the section) and listening
-  S.rDisp = {}; let ri = 0;
-  for (const u of S.runits) for (const g of u.groups) for (const q of g.questions) S.rDisp[q.no] = ++ri;
-  S.rTotal = ri;
-  S.lDisp = {}; let li = 0;
-  for (const g of S.lgroups) for (const q of g.questions) S.lDisp[q.no] = ++li;
+  S.ipMode = isIpVid(test.id);
+  // IP: continuous display 1–90 (L then R). Full/practice: identity = book numbers.
+  S.disp = {}; S.bookOf = {};
+  if (S.ipMode) {
+    let di = 0;
+    const pushDisp = (no) => { const d = ++di; S.disp[no] = d; S.bookOf[d] = no; };
+    for (const g of S.lgroups) for (const q of g.questions) pushDisp(q.no);
+    for (const u of S.runits) for (const g of u.groups) for (const q of g.questions) pushDisp(q.no);
+  } else {
+    for (const g of S.lgroups) for (const q of g.questions) { S.disp[q.no] = q.no; S.bookOf[q.no] = q.no; }
+    for (const u of S.runits) for (const g of u.groups) for (const q of g.questions) { S.disp[q.no] = q.no; S.bookOf[q.no] = q.no; }
+  }
+  S.lDisp = {}; S.rDisp = {};
+  for (const g of S.lgroups) for (const q of g.questions) S.lDisp[q.no] = S.disp[q.no];
+  for (const u of S.runits) for (const g of u.groups) for (const q of g.questions) S.rDisp[q.no] = S.disp[q.no];
+  S.rTotal = Object.keys(S.rDisp).length;
   setHud(true);
   go("#/exam");
   if (!L) { S.tick = setInterval(tick, 250); requestWakeLock(); return startReading(); }
@@ -416,7 +568,7 @@ function startExam(test) {
   const parts = [...new Set(S.lgroups.map(g => g.audio[0]))];
   const ansToggle = `<label class="ans-tog"><input type="checkbox" id="ansTimerChk" ${showAnsTimer() ? "checked" : ""}> ${t("ansTimerLbl")}</label>`;
   app.innerHTML = S.sim ? `<div class="simpanel"><h2>Listening Test <small>${t("simLSub")}</small></h2>
-   <p>${t("simLOnlineP", S.vid === "ip" ? 25 : 45)}</p>
+   <p>${t("simLOnlineP", isIpVid(S.vid) ? 25 : 45)}</p>
    <p class="muted">${t("simLInfo", S.lCount, Math.round(S.lTotal / 60))}</p>
    ${ansToggle}
    <p id="prep">${t("simPrep")} <b id="prepPct">0%</b></p>
@@ -518,7 +670,7 @@ function dirAudioUrl(key) { return "audio/" + key + ".mp3"; }
 /** Listening overview directions (online style). Overview audio auto-advances when it finishes. */
 function listenOverview() {
   S.phase = "L-dir"; hideListeningTimer();
-  const isIp = S.vid === "ip";
+  const isIp = isIpVid(S.vid);
   const clip = isIp ? "dir_overview_ip" : "dir_overview_full";
   const mins = isIp ? 25 : 45;
   $("#hudQ").textContent = "Directions";
@@ -551,7 +703,7 @@ function listenUnitIntro(lu) {
    <div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>${t("simNowPlaying")}</span></div></div>`;
   simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
   // Replay overview directions briefly for UNIT TWO; UNIT ONE continues to Part 1 directions.
-  const clip = lu > 0 ? (S.vid === "ip" ? "dir_overview_ip" : "dir_overview_full") : null;
+  const clip = lu > 0 ? (isIpVid(S.vid) ? "dir_overview_ip" : "dir_overview_full") : null;
   let ready = false;
   const goPart = () => { if (!S) return; AudioEng.stop(); listenPartDir(first); };
   $("#simNext").onclick = goPart;
@@ -606,20 +758,20 @@ async function playGroup(i) {
   hudSection.textContent = t("hudL", g._unit.name);
   let body = "";
   const q0 = g.questions[0];
-  if (g.part === 1) body = `${photoHTML(g)}<div class="qblock"><div class="qtext"><span class="qno">${S.lDisp[q0.no] || q0.no}.</span>${t("p1Prompt")}</div>${optsHTML(q0, false, 4)}</div>`;
-  else if (g.part === 2) body = `<div class="qblock"><div class="qtext"><span class="qno">${S.lDisp[q0.no] || q0.no}.</span>${t("p2Prompt")}</div>${optsHTML(q0, false, 3)}</div>`;
-  else body = gfxHTML(g) + g.questions.map(q => `<div class="qblock"><div class="qtext"><span class="qno">${S.lDisp[q.no] || q.no}.</span>${esc(q.q)}</div>${optsHTML(q, true)}</div>`).join("");
+  if (g.part === 1) body = `${photoHTML(g)}<div class="qblock"><div class="qtext"><span class="qno">${dNo(q0.no)}.</span>${t("p1Prompt")}</div>${optsHTML(q0, false, 4)}</div>`;
+  else if (g.part === 2) body = `<div class="qblock"><div class="qtext"><span class="qno">${dNo(q0.no)}.</span>${t("p2Prompt")}</div>${optsHTML(q0, false, 3)}</div>`;
+  else body = gfxHTML(g) + g.questions.map(q => `<div class="qblock"><div class="qtext"><span class="qno">${dNo(q.no)}.</span>${esc(q.q)}</div>${optsHTML(q, true)}</div>`).join("");
   const ansBox = `<div class="ansleft${showAnsTimer() ? "" : " hidden"}" id="ansLeft"></div>`;
   if (S.sim) {
-    $("#hudQ").textContent = `Question ${S.lDisp[q0.no] || q0.no}${g.questions.length > 1 ? "–" + (S.lDisp[g.questions.at(-1).no] || g.questions.at(-1).no) : ""}`;
+    $("#hudQ").textContent = `Question ${dNo(q0.no)}${g.questions.length > 1 ? "–" + (dNo(g.questions.at(-1).no)) : ""}`;
     simBar(`<span class="muted">Listening · ${PART_ZH[g.part]} · ${t("simAutoPlay")}</span>${ansBox}`);
   }
   app.innerHTML = S.sim ? `<div class="simpanel listen">
-   <div class="qhead" style="margin-bottom:8px"><div class="qnum">Question ${S.lDisp[q0.no] || q0.no}${g.questions.length > 1 ? "–" + (S.lDisp[g.questions.at(-1).no] || g.questions.at(-1).no) : ""}</div><span class="muted">${PART_ZH[g.part]}</span></div>
+   <div class="qhead" style="margin-bottom:8px"><div class="qnum">Question ${dNo(q0.no)}${g.questions.length > 1 ? "–" + (dNo(g.questions.at(-1).no)) : ""}</div><span class="muted">${PART_ZH[g.part]}</span></div>
    <div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>${t("simNowPlaying")}</span></div>
    ${g.part === 2 ? `<div class="qtext">${t("p2OnlinePrompt")}</div>${optsHTML(q0, false, 3)}` : body}</div>
    ${DEBUG ? `<button class="btn ghost small" id="dbgSkip">${t("dbgSkip")}</button>` : ""}` : `<div class="progress"><i style="width:${done / S.lCount * 100}%"></i></div>
-   <div class="partbar"><span>${PART_ZH[g.part]}</span><span>${S.lDisp[q0.no] || q0.no}${g.questions.length > 1 ? "–" + (S.lDisp[g.questions.at(-1).no] || g.questions.at(-1).no) : ""}</span></div>
+   <div class="partbar"><span>${PART_ZH[g.part]}</span><span>${dNo(q0.no)}${g.questions.length > 1 ? "–" + (dNo(g.questions.at(-1).no)) : ""}</span></div>
    <div class="card"><div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>${t("nowPlaying")}</span></div>${body}${ansBox}</div>
    ${DEBUG ? `<button class="btn ghost small" id="dbgSkip">${t("dbgSkip")}</button>` : ""}`;
   bindOpts(app);
@@ -676,7 +828,7 @@ function startReadingUnit(ru) {
 }
 const lastUnit = () => S.ru === S.runits.length - 1;
 function unitRange(u) {
-  const nos = u.groups.flatMap(g => g.questions.map(q => q.no));
+  const nos = u.groups.flatMap(g => g.questions.map(q => dNo(q.no)));
   return [Math.min(...nos), Math.max(...nos)];
 }
 /** 1-based index within the current reading unit (for progress only). */
@@ -689,7 +841,7 @@ function unitCount(u) { return u.groups.reduce((a, g) => a + g.questions.length,
 function renderReadingGroup(scrollToNo) {
   const u = S.runits[S.ru], g = u.groups[S.rg];
   const last = S.rg === u.groups.length - 1;
-  const qs = g.questions.map(q => `<div class="qblock" id="q${q.no}"><div class="qhead"><div class="qtext"><span class="qno">${q.no}.</span>${q.q ? inline(q.q) : t("blankPrompt", q.no)}</div>
+  const qs = g.questions.map(q => `<div class="qblock" id="q${q.no}"><div class="qhead"><div class="qtext"><span class="qno">${dNo(q.no)}.</span>${q.q ? inline(q.q) : t("blankPrompt", dNo(q.no))}</div>
      <button class="flagbtn${S.flags[q.no] ? " on" : ""}" data-flag="${q.no}">🚩 ${S.flags[q.no] ? t("flagged") : t("flag")}</button></div>${optsHTML(q, true)}</div>`).join("");
   const all = u.groups.flatMap(x => x.questions);
   const answered = all.filter(q => S.answers[q.no] !== undefined).length;
@@ -728,9 +880,9 @@ function openPalette() {
   overlay.dataset.dismiss = "1";
   showOverlay(`<h2>${esc(t("palTitle", u.name))}</h2>
    <p class="muted">${t("palNote")}</p>
-   <div class="palette">${items.map(x => `<button class="pal${S.answers[x.q.no] !== undefined ? " done" : ""}${S.flags[x.q.no] ? " flag" : ""}${x.gi === S.rg ? " cur" : ""}" data-gi="${x.gi}" data-no="${x.q.no}">${x.q.no}</button>`).join("")}</div>
+   <div class="palette">${items.map(x => `<button class="pal${S.answers[x.q.no] !== undefined ? " done" : ""}${S.flags[x.q.no] ? " flag" : ""}${x.gi === S.rg ? " cur" : ""}" data-gi="${x.gi}" data-no="${x.q.no}">${dNo(x.q.no)}</button>`).join("")}</div>
    <p>${t("palCounts", un.length, fl)}</p>
-   ${un.length ? `<p class="muted">${t("unansweredList", un.map(x => x.q.no).join(", "))}</p>` : ""}
+   ${un.length ? `<p class="muted">${t("unansweredList", un.map(x => dNo(x.q.no)).join(", "))}</p>` : ""}
    <p class="muted">${lastUnit() ? t("noChangeAfterSubmit") : t("noReturnNext")}</p>
    <div class="row"><button class="btn ghost" id="palClose">${t("continueAnswer")}</button>
    <button class="btn ${lastUnit() ? "warn" : ""}" id="palEnd">${endTxt}</button></div>`, false);
@@ -757,7 +909,7 @@ function submit() {
   }
   saveNote(nb);
   const lScore = scaled("L", l, lN), rScore = scaled("R", r, rN);
-  const att = {id: String(Date.now()), tid: TID, testLabel: DATA._label, vid: T.id, modeName: T.name, date: now,
+  const att = {id: String(Date.now()), tid: TID, testLabel: DATA._label, vid: T.id, modeName: T.name, disp: S.disp ? Object.assign({}, S.disp) : null, date: now,
     lRaw: l, lN, rRaw: r, rN, lScore, rScore, total: lScore + rScore, parts, answers: S.answers, flags: S.flags,
     minutes: Math.round((Date.now() - S.started) / 60000)};
   const h = loadHist(); h.push(att); saveHist(h);
@@ -791,7 +943,7 @@ function renderResult(aid) {
   <div class="card bars"><h2>${t("partRate")}</h2>${parts}
    <p class="muted">${t("weakest")}<b>${PART_ZH[weakest]}</b></p></div>
   <div class="card"><div class="row"><a class="btn" href="#/review/${a.id}">${t("viewReview")}</a><a class="btn ghost" href="#/intro/${a.vid}">${t("retake")}</a></div>
-   <div class="row" style="margin-top:10px"><a class="btn ghost" href="#/notebook">${t("nbTitle")}</a><a class="btn ghost" href="#/">${t("homeBtn")}</a></div></div>
+   <div class="row" style="margin-top:10px"><a class="btn ghost" href="#/notebook">${t("nbTitle")}</a><a class="btn ghost" href="#/wronglog">${t("wrongLogTitle")}</a><a class="btn ghost" href="#/">${t("homeBtn")}</a></div></div>
   ${historyCard()}`;
   const c = $("#clearHist"); if (c) c.onclick = e => { e.preventDefault(); if (confirm(t("confirmClearHist"))) { localStorage.removeItem(HKEY); go("#/"); } };
 }
@@ -801,7 +953,7 @@ function scriptHTML(g) { return g.script.map(x => `<p><span class="spk">${esc(x.
 function ctxHTML(g, aid) {
   if (g.sec === "L") return `${g.part === 1 ? photoReviewHTML(g) : ""}${gfxHTML(g)}
     <details ${g.part <= 2 ? "open" : ""}><summary>${t("listenScript")}</summary><div class="aud" data-p="${g.audio[0]}" data-i="${g.audio[1]}"><button class="btn small ghost loadA">${t("loadAudio")}</button></div><div class="script">${scriptHTML(g)}</div></details>`;
-  return `<details><summary>${t("viewPassage", g.questions[0].no + (g.questions.length > 1 ? "–" + g.questions.at(-1).no : ""))}</summary>${docsHTML(g)}</details>`;
+  return `<details><summary>${t("viewPassage", qLabelFromAttempt(REVIEW_ATT, g.questions[0].no) + (g.questions.length > 1 ? "–" + qLabelFromAttempt(REVIEW_ATT, g.questions.at(-1).no) : ""))}</summary>${docsHTML(g)}</details>`;
 }
 function bindAudioButtons(root) {
   root.querySelectorAll(".aud").forEach(d => {
@@ -816,18 +968,33 @@ function bindAudioButtons(root) {
 }
 function qCard(q, g, mine, extraTop = "", extraBottom = "") {
   const ok = mine === q.answer;
-  const opts = q.options.map((o, i) => `<div class="opt${i === q.answer ? " correct" : ""}${i === mine && !ok ? " wrong" : ""}"><b>${LET[i]}</b><span>${o === null ? t("listenOpt") : inline(o)}</span></div>`).join("");
-  return `<div class="qtext"><span class="qno">${q.no}.</span>${q.q ? inline(q.q) : (g.part === 6 ? t("p6Prompt") : g.part === 1 ? t("p1Prompt") : g.part === 2 ? t("p2Prompt") : "")}</div>
-    ${extraTop}<div class="opts">${opts}</div>${extraBottom}
+  const audioOnly = q.options.every(o => o == null);
+  const opts = q.options.map((o, i) => `<div class="opt${i === q.answer ? " correct" : ""}${i === mine && !ok ? " wrong" : ""}"><b>${LET[i]}</b><span>${o == null ? (audioOnly ? "" : t("listenOpt")) : inline(o)}</span></div>`).join("");
+  const optsCls = audioOnly ? "opts letters three p2review" : "opts";
+  return `<div class="qtext"><span class="qno">${qLabelFromAttempt(REVIEW_ATT, q.no)}.</span>${q.q ? inline(q.q) : (g.part === 6 ? t("p6Prompt") : g.part === 1 ? t("p1Prompt") : g.part === 2 ? t("p2Prompt") : "")}</div>
+    ${extraTop}${audioOnly ? `<p class="muted p2note">${t("p2AudioOnlyNote")}</p>` : ""}<div class="${optsCls}">${opts}</div>${extraBottom}
     <div class="exp" lang="${window.I18N.lang === "ja" && q.exp_ja ? "ja" : "zh-CN"}">💡 ${esc(pick(q, "exp"))}${q.vocab ? `<div class="vocab">${t("vocab")}${esc(pick(q, "vocab"))}</div>` : ""}${g.sec === "R" ? `<div class="srcnote">${t("aiNoteR")}</div>` : (t("aiNoteL") ? `<div class="srcnote">${t("aiNoteL")}</div>` : "")}</div>`;
 }
+function ipSectionMeta(ipNo) {
+  /* Current IP scheme: L U1 1–25, L U2 26–45, R U1 46–70, R U2 71–90 */
+  if (ipNo <= 25) return { key: "LU1", title: t("ipSecLU1") };
+  if (ipNo <= 45) return { key: "LU2", title: t("ipSecLU2") };
+  if (ipNo <= 70) return { key: "RU1", title: t("ipSecRU1") };
+  return { key: "RU2", title: t("ipSecRU2") };
+}
+
 function renderReview(aid, filter = "all") {
   setHud(false);
   const a = loadHist().find(x => x.id === aid);
+  REVIEW_ATT = a || null;
   if (a && a.tid && TESTS[a.tid] && a.tid !== TID) selectTest(a.tid);
   if (!a || !DATA.variants[a.vid]) return renderHome();
+  S = { disp: a.disp || null, ipMode: isIpVid(a.vid), answers: a.answers || {}, flags: a.flags || {}, done: true };
   const test = buildVariant(a.vid);
-  const qs = allQuestions(test);
+  let qs = allQuestions(test);
+  if (isIpVid(a.vid) && a.disp) {
+    qs = qs.slice().sort((x, y) => (a.disp[x.q.no] || 0) - (a.disp[y.q.no] || 0));
+  }
   const wrong = qs.filter(x => a.answers[x.q.no] !== x.q.answer).length;
   const flagged = qs.filter(x => a.flags && a.flags[x.q.no]).length;
   let html = `<div class="card">${window.I18N.switchHTML()}<h1>${t("reviewTitle")}</h1><div class="tabs">
@@ -837,23 +1004,83 @@ function renderReview(aid, filter = "all") {
     ${a.lN ? `<button data-f="L" class="${filter === "L" ? "on" : ""}">${t("tabL")}</button>` : ""}
     ${a.rN ? `<button data-f="R" class="${filter === "R" ? "on" : ""}">${t("tabR")}</button>` : ""}</div>
     <a href="#/result/${a.id}" class="muted">${t("backResult")}</a></div>`;
-  let lastG = null;
+  let lastG = null, lastSec = null, lastPart = null;
   for (const {q, g, s} of qs) {
     const mine = a.answers[q.no], ok = mine === q.answer;
     if (filter === "wrong" && ok) continue;
     if (filter === "flag" && !(a.flags && a.flags[q.no])) continue;
     if ((filter === "L" || filter === "R") && s.id !== filter) continue;
+    if (isIpVid(a.vid) && a.disp) {
+      const ip = a.disp[q.no];
+      const sec = ipSectionMeta(ip);
+      if (sec.key !== lastSec) {
+        html += `<div class="card ipsec"><h2>${esc(sec.title)}</h2></div>`;
+        lastSec = sec.key; lastPart = null; lastG = null;
+      }
+      if (g.part !== lastPart) {
+        html += `<div class="ippart"><span class="tag">${PART_ZH[g.part]}</span> <span class="muted">${t("ipPartRangeHint")}</span></div>`;
+        lastPart = g.part;
+      }
+    }
     let ctx = "";
     if (g !== lastG) { ctx = (g.part === 5 && g.sec === "R") ? "" : ctxHTML(g); lastG = g; }
+    const p2note = g.part === 2 ? `<p class="muted p2note">${t("p2AudioOnlyNote")}</p>` : "";
     html += `<div class="card rv${ok ? "" : " ng"}"><div class="qhead"><span class="tag">${PART_ZH[g.part]}</span>
       <span class="status ${ok ? "ok" : "ng"}">${ok ? t("stOk") : mine === undefined ? t("stNone") : t("stNg")}</span></div>
-      ${ctx}${qCard(q, g, mine, "", `<p class="muted">${t("yourAns")}<b>${mine === undefined ? t("noAns") : LET[mine]}</b> · ${t("correctAns")}<b>${LET[q.answer]}</b></p>`)}</div>`;
+      ${ctx}${p2note}${qCard(q, g, mine, "", `<p class="muted">${t("yourAns")}<b>${mine === undefined ? t("noAns") : LET[mine]}</b> · ${t("correctAns")}<b>${LET[q.answer]}</b></p>`)}</div>`;
   }
   app.innerHTML = html;
   bindAudioButtons(app);
   app.querySelectorAll(".tabs button").forEach(b => b.onclick = () => renderReview(aid, b.dataset.f));
   bindLang(() => { const y = window.scrollY; renderReview(aid, filter); window.scrollTo(0, y); });
 }
+
+
+function renderWrongLog(filter = "all") {
+  setHud(false); REVIEW_ATT = null; S = null;
+  let rows = loadWrongLog().slice().sort((a, b) => (b.n || 0) - (a.n || 0) || b.book - a.book);
+  if (filter !== "all") rows = rows.filter(r => String(r.part) === String(filter));
+  const all = loadWrongLog();
+  const parts = [...new Set(all.map(r => r.part))].sort((a, b) => a - b);
+  let html = `<div class="card">${window.I18N.switchHTML()}<h1>${t("wrongLogTitle")}</h1>
+   <p class="muted">${t("wrongLogDesc", all.length)}</p>
+   <div class="tabs"><button data-f="all" class="${filter === "all" ? "on" : ""}">${t("tabAll", all.length)}</button>
+   ${parts.map(p => `<button data-f="${p}" class="${String(filter) === String(p) ? "on" : ""}">Part ${p} (${all.filter(r => r.part === p).length})</button>`).join("")}</div>
+   <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+     <button class="btn" id="wlExport">${t("wrongLogExport")}</button>
+     <button class="btn ghost" id="wlClear">${t("wrongLogClear")}</button>
+     <a class="btn ghost" href="#/">${t("backBack")}</a></div>
+   <pre class="wlhint muted" id="wlFmt">${esc(t("wrongLogFmtHint"))}</pre></div>`;
+  if (!rows.length) html += `<div class="card"><p class="muted">${t("wrongLogEmpty")}</p></div>`;
+  else {
+    html += `<div class="card"><table class="hist wl"><tr><th>${t("thDate")}</th><th>Test</th><th>#</th><th>Part</th><th>you</th><th>ans</th><th>tag</th><th>×</th></tr>`;
+    for (const r of rows) {
+      const tcode = r.tid === "t2" ? "T2" : "T1";
+      const ip = r.ip != null ? ` <small class="muted">IP${r.ip}</small>` : "";
+      html += `<tr><td>${esc(r.date || "")}</td><td>${tcode}${r.version ? "-" + r.version : ""}</td><td>Q${r.book}${ip}</td><td>P${r.part}</td><td>${esc(r.you)}</td><td>${esc(r.ans)}</td><td><code>${esc(r.tag)}</code></td><td>${r.n || 1}</td></tr>`;
+    }
+    html += `</table></div>`;
+  }
+  app.innerHTML = html;
+  app.querySelectorAll(".tabs button").forEach(b => b.onclick = () => renderWrongLog(b.dataset.f));
+  bindLang(() => renderWrongLog(filter));
+  const exp = $("#wlExport");
+  if (exp) exp.onclick = async () => {
+    const text = wrongLogExportText(loadWrongLog());
+    try { await navigator.clipboard.writeText(text); } catch {}
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `ets950-wronglog-${tokyoDateStr()}.txt`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    exp.textContent = t("wrongLogCopied");
+    setTimeout(() => { exp.textContent = t("wrongLogExport"); }, 2000);
+  };
+  const clr = $("#wlClear");
+  if (clr) clr.onclick = () => { if (confirm(t("confirmWrongLogClear"))) { localStorage.removeItem(WKEY); renderWrongLog(filter); } };
+}
+
 function renderNotebook(filter = "all") {
   setHud(false);
   const nb = loadNote();
@@ -948,12 +1175,13 @@ document.addEventListener("click", e => { const pop = $("#volPop"); if (!pop.con
 function simHome() {
   document.body.classList.add("sim"); setHud(false); simBar(null);
   const nbo = loadNote(), nb = Object.keys(nbo).filter(k => !nbo[k].ok && noteNo(k) !== null).length;
+  const wlN = loadWrongLog().length;
   app.innerHTML = `<div class="simpanel">
    ${window.I18N.switchHTML()}<h1>TOEIC® Listening &amp; Reading Test <small>${esc(t("simHomeSub", dTitle(DATA)))}</small></h1>
    ${testPicker()}
    <p>${t("simFlow")}</p>
    <button class="btn block big" id="simStart">${t("simStart")}</button>
-   <div class="row" style="margin-top:12px"><a class="btn ghost" href="#/notebook">${t("simNb", nb)}</a><a class="btn ghost" href="#/history">${t("simHist")}</a></div>
+   <div class="row" style="margin-top:12px"><a class="btn ghost" href="#/notebook">${t("simNb", nb)}</a><a class="btn ghost" href="#/wronglog">${t("wrongLogTitle")}</a><a class="btn ghost" href="#/history">${t("simHist")}</a></div>
    <div class="row" style="margin-top:12px">${SHELL ? `<button class="btn ghost" id="simQuit">${t("exitBtn")}</button>` : `<button class="btn ghost" id="simLeave">${t("simLeave")}</button>`}</div></div>`;
   bindTestPicker(simHome); bindLang(simHome);
   $("#simStart").onclick = () => { AudioEng.unlock(); simSound(); };
@@ -1005,9 +1233,11 @@ function simOverview() {
   $("#simBack").onclick = simAgree; $("#simNext").onclick = simMode;
 }
 function simMode() {
-  const V = DATA.variants, main = ["ip", "full"].filter(k => V[k]), practice = ["L", "R"].filter(k => V[k]);
+  const V = DATA.variants;
+  const main = ["ipA", "ipB", "ipC", "full"].filter(k => V[k]);
+  const practice = ["L", "R"].filter(k => V[k]);
   const chips = k => {
-    if (k === "ip") return `<div class="mode-meta"><span class="chip">⏱ 60 min</span><span class="chip">90 Q</span><span class="chip">L 45 · R 45</span></div>`;
+    if (isIpVid(k)) return `<div class="mode-meta"><span class="chip">⏱ 60 min</span><span class="chip">90 Q</span><span class="chip">${t("ipVerTag", k.slice(-1))}</span></div>`;
     if (k === "full") return `<div class="mode-meta"><span class="chip">⏱ ~120 min</span><span class="chip">200 Q</span><span class="chip">L 100 · R 100</span></div>`;
     if (k === "L") return `<div class="mode-meta"><span class="chip">🎧 ~45 min</span></div>`;
     if (k === "R") return `<div class="mode-meta"><span class="chip">📖 75 min</span></div>`;
@@ -1080,14 +1310,14 @@ function simPage(i, scrollNo) {
   const first = qs[0], last = qs[qs.length - 1];
   const up0 = unitProg(u, first.no), up1 = unitProg(u, last.no);
   S.ri = S.ritems.findIndex(x => x.q.no === first.no); // keep legacy index for review return
-  const qLabel = qs.length > 1 ? `Questions ${first.no}–${last.no}` : `Question ${first.no}`;
+  const qLabel = qs.length > 1 ? `Questions ${dNo(first.no)}–${dNo(last.no)}` : `Question ${dNo(first.no)}`;
   const progLabel = qs.length > 1 ? `${up0}–${up1} of ${uc}` : `${up0} of ${uc}`;
   $("#hudQ").textContent = qLabel;
   hudSection.textContent = `Reading · Questions ${a}–${b}`;
   const askBlocks = qs.map(q => {
-    const stem = q.q ? inline(q.q) : t("simBlank", q.no);
+    const stem = q.q ? inline(q.q) : t("simBlank", dNo(q.no));
     return `<div class="qblock" id="q${q.no}">
-      <div class="qhead"><div class="qnum">Question ${q.no}</div>
+      <div class="qhead"><div class="qnum">Question ${dNo(q.no)}</div>
        <label class="mark"><input type="checkbox" class="markQ" data-no="${q.no}" ${S.flags[q.no] ? "checked" : ""}> ${t("markLbl")}</label></div>
       <div class="qtext">${stem}</div>
       ${optsHTML(q, true)}</div>`;
@@ -1170,7 +1400,7 @@ function simCongrats(aid) {
   $("#simNext").onclick = () => { simBar(null); go("#/result/" + aid); };
 }
 
-if (DEBUG || FAST) window.__t = {get S() { return S; }, set S(v) { S = v; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw, startExam, buildVariant, abortExam, go, simQ, simPage, pageIndexForQuestion, simReview, allQuestions, scaled, get DATA() { return DATA; }};   // test hook
+if (DEBUG || FAST) window.__t = {get S() { return S; }, set S(v) { S = v; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw, startExam, buildVariant, abortExam, go, simQ, simPage, pageIndexForQuestion, simReview, allQuestions, scaled, dNo, isIpVid, qLabelFromAttempt, get DATA() { return DATA; }};   // test hook
 /* ---------- boot ---------- */
 (async () => {
   if (!SIM && sessionStorage.getItem("ets950.sim") === "1") SIM = true;

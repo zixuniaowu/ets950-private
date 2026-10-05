@@ -276,3 +276,14 @@ body.sim .simpanel.listen .qblock{border-top:0;padding-top:4px}
 body.sim .simpanel.listen .qtext{font-size:15px;color:#64748b;font-weight:500}
 body.sim .simpanel.listen .opt span{font-size:16px;line-height:1.45;color:#1e293b}
 .mode-card input[type=radio]{transform:scale(1.15)}
+
+/* IP review sections */
+.ipsec{background:#eff6ff;border:1px solid #bfdbfe;padding:12px 16px;margin:16px 0 8px}
+.ipsec h2{margin:0;font-size:1.05rem;color:#1e3a8a}
+.ippart{margin:8px 0 4px;padding:4px 0;border-bottom:1px dashed #cbd5e1}
+.p2note{background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;margin:8px 0}
+.opts.p2review{margin-top:6px}
+.opts.p2review .opt span:empty{display:none}
+table.wl td,table.wl th{font-size:13px}
+table.wl code{font-size:12px;background:#f1f5f9;padding:1px 4px;border-radius:3px}
+.wlhint{white-space:pre-wrap;font-size:12px;margin-top:8px}
