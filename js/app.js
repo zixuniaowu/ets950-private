@@ -217,7 +217,8 @@ function renderLock(msg = "") {
    <form id="lockForm"><input type="password" id="pw" autocomplete="current-password" placeholder="${t("simLockPh")}" required>
    ${SHELL ? "" : `<label><input type="checkbox" id="remember"> ${t("rememberShort")}</label>`}
    <div class="err" id="err">${esc(msg)}</div>
-   <button class="btn block" id="unlockBtn" type="submit">SUBMIT</button></form>${SHELL ? `<p style="margin-top:18px"><button class="btn ghost small" type="button" id="lockExit">${t("exitBtn")}</button></p>` : ""}</div>` : `<div class="card lock">${window.I18N.switchHTML()}<h1>${t("lockTitle")}</h1>
+   <button class="btn block" id="unlockBtn" type="submit">SUBMIT</button></form>${SHELL ? `<p style="margin-top:18px"><button class="btn ghost small" type="button" id="lockExit">${t("exitBtn")}</button></p>` : ""}</div>` : `<div class="card lock hero">${window.I18N.switchHTML()}<div class="eyebrow">Private Mock Exam</div>
+   <h1>${t("lockTitle")}</h1>
    <p class="muted">${t("lockDesc")}</p>
    <form id="lockForm"><input type="password" id="pw" autocomplete="current-password" placeholder="${t("pwPh")}" required>
    <label><input type="checkbox" id="remember"> ${t("rememberLong")}</label>
@@ -270,17 +271,28 @@ function renderHome() {
   if (SIM) return simHome();
   const nbo = loadNote(), nb = Object.keys(nbo).filter(k => !nbo[k].ok && noteNo(k) !== null).length;
   const V = DATA.variants;
+  const modeChip = k => {
+    if (k === "ip") return `<span class="chip">⏱ 60 min</span><span class="chip">90 Q</span><span class="chip">IP Online</span>`;
+    if (k === "full") return `<span class="chip">⏱ ~120 min</span><span class="chip">200 Q</span><span class="chip">Full L&R</span>`;
+    if (k === "L") return `<span class="chip">🎧 Listening</span><span class="chip">~45 min</span>`;
+    if (k === "R") return `<span class="chip">📖 Reading</span><span class="chip">75 min</span>`;
+    return "";
+  };
   app.innerHTML = `
-  <div class="card">${window.I18N.switchHTML()}<h1>${esc(dTitle(DATA))}</h1>
-  <p>${t("homeDesc")}</p></div>
+  <div class="card hero">${window.I18N.switchHTML()}<div class="eyebrow">TOEIC® L&R Mock</div>
+  <h1>${esc(dTitle(DATA))}</h1>
+  <p class="muted">${t("homeDesc")}</p></div>
   ${testPicker()}
   <div class="card"><h2>${t("simCardTitle")}</h2><p class="muted">${t("simCardDesc")}</p>
    <button class="btn block" id="simEnter">${t("simEnter")}</button></div>
   <div class="card modes"><h2>${t("chooseMode")}</h2>
-  ${["ip","full"].filter(k => V[k]).map(k => `<div class="card mode-main"><h3 style="margin-top:0">${esc(vName(V[k]))}</h3><p class="muted">${esc(vDesc(V[k]))}</p><a class="btn block" href="#/intro/${k}">${t("start")}</a></div>`).join("")}
+  <div class="mode-grid main">${["ip","full"].filter(k => V[k]).map(k => `<a class="mode-card primary" href="#/intro/${k}"><div class="mode-kicker">${k === "ip" ? "IP Online" : "Full Test"}</div><h3>${esc(vName(V[k]))}</h3><p class="muted">${esc(vDesc(V[k]))}</p><div class="mode-meta">${modeChip(k)}</div><span class="btn block" style="margin-top:10px;pointer-events:none">${t("start")}</span></a>`).join("")}</div>
   <h3 class="mode-sec">${t("practiceModes")}</h3>
-  ${["L","R"].filter(k => V[k]).map(k => `<div class="card"><h3 style="margin-top:0">${esc(vName(V[k]))}</h3><p class="muted">${esc(vDesc(V[k]))}</p><a class="btn ghost block" href="#/intro/${k}">${t("start")}</a></div>`).join("")}</div>
-  <div class="card"><h2>${t("nbTitle")}</h2><p>${t("nbCount", nb)}</p><a class="btn ghost block" href="#/notebook">${t("nbOpen")}</a></div>
+  <div class="nav-tiles">${["L","R"].filter(k => V[k]).map(k => `<a class="nav-tile" href="#/intro/${k}"><strong>${esc(vName(V[k]))}</strong><span>${esc(vDesc(V[k]))}</span></a>`).join("")}</div></div>
+  <div class="nav-tiles" style="margin:14px 0">
+   <a class="nav-tile" href="#/notebook"><strong>${t("nbTitle")}</strong><span>${t("nbCount", nb)}</span></a>
+   <a class="nav-tile" href="#/history"><strong>${t("simHist")}</strong><span>${t("histTitle")}</span></a>
+  </div>
   ${historyCard()}
   <div class="card"><details><summary>${t("notes")}</summary><ul class="rules">${pick(DATA, "notes").map(n => `<li>${esc(n)}</li>`).join("")}</ul></details>
   <p><a href="#" id="lockNow">${t("lockNow")}</a></p></div>`;
@@ -603,8 +615,9 @@ async function playGroup(i) {
     simBar(`<span class="muted">Listening · ${PART_ZH[g.part]} · ${t("simAutoPlay")}</span>${ansBox}`);
   }
   app.innerHTML = S.sim ? `<div class="simpanel listen">
+   <div class="qhead" style="margin-bottom:8px"><div class="qnum">Question ${S.lDisp[q0.no] || q0.no}${g.questions.length > 1 ? "–" + (S.lDisp[g.questions.at(-1).no] || g.questions.at(-1).no) : ""}</div><span class="muted">${PART_ZH[g.part]}</span></div>
    <div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>${t("simNowPlaying")}</span></div>
-   ${g.part === 2 ? `<div class="qtext"><span class="qno">${S.lDisp[q0.no] || q0.no}.</span>${t("p2OnlinePrompt")}</div>${optsHTML(q0, false, 3)}` : body}</div>
+   ${g.part === 2 ? `<div class="qtext">${t("p2OnlinePrompt")}</div>${optsHTML(q0, false, 3)}` : body}</div>
    ${DEBUG ? `<button class="btn ghost small" id="dbgSkip">${t("dbgSkip")}</button>` : ""}` : `<div class="progress"><i style="width:${done / S.lCount * 100}%"></i></div>
    <div class="partbar"><span>${PART_ZH[g.part]}</span><span>${S.lDisp[q0.no] || q0.no}${g.questions.length > 1 ? "–" + (S.lDisp[g.questions.at(-1).no] || g.questions.at(-1).no) : ""}</span></div>
    <div class="card"><div class="listenstate" id="ls"><span class="wave"><i></i><i></i><i></i><i></i></span><span>${t("nowPlaying")}</span></div>${body}${ansBox}</div>
@@ -760,7 +773,8 @@ function renderResult(aid) {
   }).join("");
   const weakest = Object.keys(a.parts).sort((x, y) => a.parts[x].c / a.parts[x].n - a.parts[y].c / a.parts[y].n)[0];
   const both = a.lN && a.rN;
-  app.innerHTML = `<div class="card"><h1>${t("resultTitle")}</h1><p class="muted">${esc(modeNameOf(a))} · ${new Date(a.date).toLocaleString(loc())} · ${t("usedMin", a.minutes)}</p>
+  app.innerHTML = `<div class="card hero"><div class="eyebrow">Results</div><h1>${t("resultTitle")}</h1>
+   <p class="muted">${esc(modeNameOf(a))} · ${new Date(a.date).toLocaleString(loc())} · ${t("usedMin", a.minutes)}</p>
    <div class="scorebig">
     ${a.lN ? `<div><small>${t("lLabel")}</small><div class="n">${a.lScore}</div><small>${t("correctN", a.lRaw, a.lN)}</small></div>` : ""}
     ${a.rN ? `<div><small>${t("rLabel")}</small><div class="n">${a.rScore}</div><small>${t("correctN", a.rRaw, a.rN)}</small></div>` : ""}
@@ -985,11 +999,17 @@ function simOverview() {
 }
 function simMode() {
   const V = DATA.variants, main = ["ip", "full"].filter(k => V[k]), practice = ["L", "R"].filter(k => V[k]);
+  const chips = k => {
+    if (k === "ip") return `<div class="mode-meta"><span class="chip">⏱ 60 min</span><span class="chip">90 Q</span><span class="chip">L 45 · R 45</span></div>`;
+    if (k === "full") return `<div class="mode-meta"><span class="chip">⏱ ~120 min</span><span class="chip">200 Q</span><span class="chip">L 100 · R 100</span></div>`;
+    if (k === "L") return `<div class="mode-meta"><span class="chip">🎧 ~45 min</span></div>`;
+    if (k === "R") return `<div class="mode-meta"><span class="chip">📖 75 min</span></div>`;
+    return "";
+  };
   app.innerHTML = `<div class="simpanel"><h2>Select Test Mode <small>${t("modeSub")}</small></h2>
    <p class="muted">${t("modeMainHint")}</p>
-   ${main.map((k, i) => `<label class="radio card mode-main"><input type="radio" name="mode" value="${k}" ${i === 0 ? "checked" : ""}> <b>${esc(vName(V[k]))}</b><br><span class="muted">${esc(vDesc(V[k]))}</span></label>`).join("")}
-   ${practice.length ? `<h3 class="mode-sec">${t("practiceModes")}</h3>` : ""}
-   ${practice.map(k => `<label class="radio card"><input type="radio" name="mode" value="${k}"> <b>${esc(vName(V[k]))}</b><br><span class="muted">${esc(vDesc(V[k]))}</span></label>`).join("")}</div>`;
+   <div class="mode-grid main">${main.map((k, i) => `<label class="mode-card primary"><input type="radio" name="mode" value="${k}" ${i === 0 ? "checked" : ""} style="accent-color:#1a6bb5;margin:0 8px 8px 0"> <b>${esc(vName(V[k]))}</b>${chips(k)}<p class="muted" style="margin:6px 0 0">${esc(vDesc(V[k]))}</p></label>`).join("")}</div>
+   ${practice.length ? `<h3 class="mode-sec">${t("practiceModes")}</h3><div class="mode-grid">${practice.map(k => `<label class="mode-card"><input type="radio" name="mode" value="${k}" style="accent-color:#1a6bb5;margin:0 8px 8px 0"> <b>${esc(vName(V[k]))}</b>${chips(k)}<p class="muted" style="margin:6px 0 0">${esc(vDesc(V[k]))}</p></label>`).join("")}</div>` : ""}</div>`;
   simBar(`<button class="btn ghost" id="simBack">‹ Back</button><button class="btn" id="simNext">${t("startGo")}</button>`);
   $("#simBack").onclick = simOverview;
   $("#simNext").onclick = () => { const v = app.querySelector("[name=mode]:checked").value; AudioEng.unlock(); startExam(buildVariant(v)); };
@@ -1097,7 +1117,7 @@ function simCongrats(aid) {
   $("#simNext").onclick = () => { simBar(null); go("#/result/" + aid); };
 }
 
-if (DEBUG || FAST) window.__t = {get S() { return S; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw};   // test hook
+if (DEBUG || FAST) window.__t = {get S() { return S; }, set S(v) { S = v; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw, startExam, buildVariant, abortExam, go, simQ, simReview, get DATA() { return DATA; }};   // test hook
 /* ---------- boot ---------- */
 (async () => {
   if (!SIM && sessionStorage.getItem("ets950.sim") === "1") SIM = true;
@@ -1114,4 +1134,5 @@ if (DEBUG || FAST) window.__t = {get S() { return S; }, AudioEng, loadHist, FAST
   }
   route();
 })();
+
 })();
