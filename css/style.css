@@ -214,6 +214,11 @@ label.radio.mode-main{border-color:#93c5fd;background:#f5f9ff}
 .simq.split{display:grid;grid-template-columns:1.05fr .95fr;gap:0;max-width:none;height:calc(100dvh - 150px);padding:0;overflow:hidden}
 .simq.split .simdoc,.simq.split .simask{overflow:auto;min-height:0;padding:18px 20px}
 .simq.split .simdoc{border-right:1px solid #d1d5db;background:#fafbfc}
+.simask .qblock{padding:12px 0 16px;border-bottom:1px solid #e5e7eb}
+.simask .qblock:last-child{border-bottom:0}
+.simask .qhead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.simask .pageprog{margin-bottom:4px;padding-bottom:8px;border-bottom:1px solid #e5e7eb}
+.simask .qnum{font-weight:700;font-size:1.05rem}
 .qnum{font-weight:700;font-size:16px;color:#1e293b}
 label.mark{font-size:13px;white-space:nowrap;cursor:pointer;user-select:none;color:#334155}
 body.sim .opt{border-radius:2px;border-width:1px;padding:11px 12px}

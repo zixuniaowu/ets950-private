@@ -676,13 +676,20 @@ function startReadingUnit(ru) {
 }
 const lastUnit = () => S.ru === S.runits.length - 1;
 function unitRange(u) {
-  const nos = u.groups.flatMap(g => g.questions.map(q => S.rDisp[q.no]));
+  const nos = u.groups.flatMap(g => g.questions.map(q => q.no));
   return [Math.min(...nos), Math.max(...nos)];
 }
+/** 1-based index within the current reading unit (for progress only). */
+function unitProg(u, no) {
+  let i = 0;
+  for (const g of u.groups) for (const q of g.questions) { i++; if (q.no === no) return i; }
+  return i;
+}
+function unitCount(u) { return u.groups.reduce((a, g) => a + g.questions.length, 0); }
 function renderReadingGroup(scrollToNo) {
   const u = S.runits[S.ru], g = u.groups[S.rg];
   const last = S.rg === u.groups.length - 1;
-  const qs = g.questions.map(q => `<div class="qblock" id="q${q.no}"><div class="qhead"><div class="qtext"><span class="qno">${S.rDisp[q.no] || q.no}.</span>${q.q ? inline(q.q) : t("blankPrompt", S.rDisp[q.no] || q.no)}</div>
+  const qs = g.questions.map(q => `<div class="qblock" id="q${q.no}"><div class="qhead"><div class="qtext"><span class="qno">${q.no}.</span>${q.q ? inline(q.q) : t("blankPrompt", q.no)}</div>
      <button class="flagbtn${S.flags[q.no] ? " on" : ""}" data-flag="${q.no}">🚩 ${S.flags[q.no] ? t("flagged") : t("flag")}</button></div>${optsHTML(q, true)}</div>`).join("");
   const all = u.groups.flatMap(x => x.questions);
   const answered = all.filter(q => S.answers[q.no] !== undefined).length;
@@ -721,9 +728,9 @@ function openPalette() {
   overlay.dataset.dismiss = "1";
   showOverlay(`<h2>${esc(t("palTitle", u.name))}</h2>
    <p class="muted">${t("palNote")}</p>
-   <div class="palette">${items.map(x => `<button class="pal${S.answers[x.q.no] !== undefined ? " done" : ""}${S.flags[x.q.no] ? " flag" : ""}${x.gi === S.rg ? " cur" : ""}" data-gi="${x.gi}" data-no="${x.q.no}">${S.rDisp[x.q.no] || x.q.no}</button>`).join("")}</div>
+   <div class="palette">${items.map(x => `<button class="pal${S.answers[x.q.no] !== undefined ? " done" : ""}${S.flags[x.q.no] ? " flag" : ""}${x.gi === S.rg ? " cur" : ""}" data-gi="${x.gi}" data-no="${x.q.no}">${x.q.no}</button>`).join("")}</div>
    <p>${t("palCounts", un.length, fl)}</p>
-   ${un.length ? `<p class="muted">${t("unansweredList", un.map(x => S.rDisp[x.q.no] || x.q.no).join(", "))}</p>` : ""}
+   ${un.length ? `<p class="muted">${t("unansweredList", un.map(x => x.q.no).join(", "))}</p>` : ""}
    <p class="muted">${lastUnit() ? t("noChangeAfterSubmit") : t("noReturnNext")}</p>
    <div class="row"><button class="btn ghost" id="palClose">${t("continueAnswer")}</button>
    <button class="btn ${lastUnit() ? "warn" : ""}" id="palEnd">${endTxt}</button></div>`, false);
@@ -1022,44 +1029,93 @@ function simReadingIntro() {
   simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
   $("#simNext").onclick = () => { requestWakeLock(); if (!S.tick) S.tick = setInterval(tick, 250); startReadingUnit(0); };
 }
+function buildReadingPages(u) {
+  /* Part 5: one question per page. Part 6/7 (passage groups): one page per group with ALL questions. */
+  const pages = [];
+  for (const g of u.groups) {
+    const hasDoc = g.docs && g.docs.length;
+    if (hasDoc || g.part === 6 || g.part === 7) {
+      pages.push({ kind: "pass", g, questions: g.questions.slice() });
+    } else {
+      for (const q of g.questions) pages.push({ kind: "one", g, questions: [q] });
+    }
+  }
+  return pages;
+}
+function pageIndexForQuestion(no) {
+  const pages = S.rpages || [];
+  for (let i = 0; i < pages.length; i++) if (pages[i].questions.some(q => q.no === no)) return i;
+  return 0;
+}
 function simUnitDir() {
   const u = S.runits[S.ru];
   S.ritems = u.groups.flatMap(g => g.questions.map(q => ({q, g})));
+  S.rpages = buildReadingPages(u);
   S.phase = "R-dir";
   const [a, b] = unitRange(u);
   $("#hudQ").textContent = "Directions";
-  hudSection.textContent = `Reading · Questions ${a}–${b} of ${S.rTotal}`;
+  hudSection.textContent = `Reading · Questions ${a}–${b}`;
   app.innerHTML = `<div class="simpanel"><h2>Reading · ${esc(u.name)}</h2>
    <h3>Part 5 · Incomplete Sentences ${t("p5Sub")}</h3>
    <p><b>Directions:</b> Each sentence below is missing a word or phrase. Four answer choices are given. Select the choice that best completes the sentence, then click on your answer.</p>
    <p class="muted">${t("unitInfo", S.ritems.length, Math.round(u.time / 60))} · ${t("rRange", a, b, S.rTotal)}</p></div>`;
   simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
-  $("#simNext").onclick = () => simQ(0);
+  $("#simNext").onclick = () => simPage(0);
 }
 const SIM_DIR = new Proxy({}, {get: (_, p) => t("simDir" + String(p))});
-function simQ(i) {
-  S.ri = i; S.phase = "R";
-  const {q, g} = S.ritems[i], prev = S.ritems[i - 1];
+/** Navigate by passage page (Part 6/7 keep all Qs for one passage together). i indexes S.rpages. */
+function simPage(i, scrollNo) {
+  const u0 = S.runits && S.runits[S.ru];
+  if (!u0) return;
+  if (!S.rpages) S.rpages = buildReadingPages(u0);
+  i = Math.max(0, Math.min(i, S.rpages.length - 1));
+  S.rpi = i; S.phase = "R";
+  const page = S.rpages[i], g = page.g, qs = page.questions;
+  const prev = i > 0 ? S.rpages[i - 1] : null;
   const newPart = g.part !== 5 && (!prev || prev.g.part !== g.part);
   const hasDoc = g.docs && g.docs.length;
   const u = S.runits[S.ru];
   const [a, b] = unitRange(u);
-  const prog = S.rDisp[q.no] || (i + 1);
-  $("#hudQ").textContent = `Question ${q.no}`;
-  hudSection.textContent = `Reading · Questions ${a}–${b} of ${S.rTotal}`;
+  const uc = unitCount(u);
+  const first = qs[0], last = qs[qs.length - 1];
+  const up0 = unitProg(u, first.no), up1 = unitProg(u, last.no);
+  S.ri = S.ritems.findIndex(x => x.q.no === first.no); // keep legacy index for review return
+  const qLabel = qs.length > 1 ? `Questions ${first.no}–${last.no}` : `Question ${first.no}`;
+  const progLabel = qs.length > 1 ? `${up0}–${up1} of ${uc}` : `${up0} of ${uc}`;
+  $("#hudQ").textContent = qLabel;
+  hudSection.textContent = `Reading · Questions ${a}–${b}`;
+  const askBlocks = qs.map(q => {
+    const stem = q.q ? inline(q.q) : t("simBlank", q.no);
+    return `<div class="qblock" id="q${q.no}">
+      <div class="qhead"><div class="qnum">Question ${q.no}</div>
+       <label class="mark"><input type="checkbox" class="markQ" data-no="${q.no}" ${S.flags[q.no] ? "checked" : ""}> ${t("markLbl")}</label></div>
+      <div class="qtext">${stem}</div>
+      ${optsHTML(q, true)}</div>`;
+  }).join("");
   app.innerHTML = `<div class="simq${hasDoc ? " split" : ""}">
    ${hasDoc ? `<div class="simdoc">${newPart ? `<div class="dirnote">${SIM_DIR[g.part]}</div>` : ""}${docsHTML(g)}</div>` : ""}
    <div class="simask">
-    <div class="qhead"><div class="qnum">Question ${q.no} <span class="muted">${prog} of ${S.rTotal}</span></div></div>
-    <div class="qtext">${q.q ? inline(q.q) : t("simBlank", q.no)}</div>
-    ${optsHTML(q, true)}</div></div>`;
+    <div class="qhead pageprog"><div class="qnum">${qLabel} <span class="muted">${progLabel}</span></div></div>
+    ${askBlocks}</div></div>`;
   bindOpts(app);
-  simBar(`<button class="btn ghost" id="simBack" ${i === 0 ? "disabled" : ""}>‹ Back</button><label class="mark simbar-mark"><input type="checkbox" id="markQ2" ${S.flags[q.no] ? "checked" : ""}> Mark item for review</label><button class="btn ghost" id="simRev">Review</button><button class="btn" id="simNext">Next ›</button>`);
-  $("#markQ2").onchange = e => { S.flags[q.no] = e.target.checked; };
-  $("#simBack").onclick = () => simQ(i - 1);
+  app.querySelectorAll(".markQ").forEach(el => el.onchange = e => { S.flags[+el.dataset.no] = e.target.checked; });
+  simBar(`<button class="btn ghost" id="simBack" ${i === 0 ? "disabled" : ""}>‹ Back</button><button class="btn ghost" id="simRev">Review</button><button class="btn" id="simNext">Next ›</button>`);
+  $("#simBack").onclick = () => simPage(i - 1);
   $("#simRev").onclick = () => simReview("all");
-  $("#simNext").onclick = () => i + 1 < S.ritems.length ? simQ(i + 1) : simReview("all");
-  window.scrollTo(0, 0); const sd = app.querySelector(".simdoc"); if (sd) sd.scrollTop = 0;
+  $("#simNext").onclick = () => i + 1 < S.rpages.length ? simPage(i + 1) : simReview("all");
+  window.scrollTo(0, 0);
+  const sd = app.querySelector(".simdoc"); if (sd) sd.scrollTop = 0;
+  const sa = app.querySelector(".simask"); if (sa) sa.scrollTop = 0;
+  if (scrollNo) {
+    const el = app.querySelector("#q" + scrollNo);
+    if (el && sa) { el.scrollIntoView({ block: "start" }); }
+  }
+}
+/** @deprecated name kept for debug hooks / review — jump to page containing question index in ritems */
+function simQ(i) {
+  const item = S.ritems[i];
+  if (!item) return simPage(0);
+  simPage(pageIndexForQuestion(item.q.no), item.q.no);
 }
 function simReview(filter = "all") {
   S.phase = "R-rev";
@@ -1069,7 +1125,7 @@ function simReview(filter = "all") {
   const un = unItems.length, fl = flItems.length;
   const [a, b] = unitRange(u);
   $("#hudQ").textContent = "Review";
-  hudSection.textContent = `Reading · Questions ${a}–${b} of ${S.rTotal}`;
+  hudSection.textContent = `Reading · Questions ${a}–${b}`;
   const shown = filter === "marked" ? items.filter(x => S.flags[x.q.no])
               : filter === "unanswered" ? items.filter(x => S.answers[x.q.no] === undefined)
               : items;
@@ -1091,13 +1147,13 @@ function simReview(filter = "all") {
      return `<tr class="rrow${done ? " done" : " miss"}${S.flags[x.q.no] ? " flag" : ""}" data-i="${idx}"><td><b>${x.q.no}</b></td><td>${status(x)} <span class="muted">${done ? "Answered" : "Not Answered"}</span></td><td>›</td></tr>`;
    }).join("") : `<tr><td colspan="3" class="muted">${t("revEmpty")}</td></tr>`}</tbody></table></div>`;
   app.querySelectorAll(".revfilters [data-f]").forEach(b => b.onclick = () => simReview(b.dataset.f));
-  app.querySelectorAll(".rrow").forEach(b => b.onclick = () => simQ(+b.dataset.i));
+  app.querySelectorAll(".rrow").forEach(b => b.onclick = () => { const it = items[+b.dataset.i]; simPage(pageIndexForQuestion(it.q.no), it.q.no); });
   const last = lastUnit();
   simBar(`<button class="btn ghost" id="simRet">${t("simRet")}</button><button class="btn ${last ? "warn" : ""}" id="simEnd">${last ? t("finishTest") : t("nextUnit")}</button>`);
-  $("#simRet").onclick = () => simQ(Math.min(S.ri || 0, items.length - 1));
+  $("#simRet").onclick = () => simPage(Math.min(S.rpi || 0, (S.rpages || []).length - 1));
   $("#simEnd").onclick = () => {
     overlay.dataset.dismiss = "1";
-    const unList = unItems.map(x => S.rDisp[x.q.no] || x.q.no);
+    const unList = unItems.map(x => x.q.no);
     showOverlay(`<h2>${last ? t("feTitleLast") : t("feTitleUnit")}</h2>
      <p>${un ? t("feUn", un) : t("feAll")}${last ? t("noChangeAfterSubmit") : t("feUnit")}</p>
      ${un && last ? `<p class="muted">${t("unansweredList", unList.join(", "))}</p>` : ""}
@@ -1114,7 +1170,7 @@ function simCongrats(aid) {
   $("#simNext").onclick = () => { simBar(null); go("#/result/" + aid); };
 }
 
-if (DEBUG || FAST) window.__t = {get S() { return S; }, set S(v) { S = v; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw, startExam, buildVariant, abortExam, go, simQ, simReview, allQuestions, scaled, get DATA() { return DATA; }};   // test hook
+if (DEBUG || FAST) window.__t = {get S() { return S; }, set S(v) { S = v; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw, startExam, buildVariant, abortExam, go, simQ, simPage, pageIndexForQuestion, simReview, allQuestions, scaled, get DATA() { return DATA; }};   // test hook
 /* ---------- boot ---------- */
 (async () => {
   if (!SIM && sessionStorage.getItem("ets950.sim") === "1") SIM = true;
