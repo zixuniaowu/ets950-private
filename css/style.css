@@ -168,3 +168,6 @@ html[lang="ja"] body,[lang="ja"]{font-family:-apple-system,BlinkMacSystemFont,"H
 .langsw button.on{background:var(--brand2);color:#fff}
 .langsw button[data-lang="ja"]{font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP","Noto Sans CJK JP","Yu Gothic UI","Meiryo",sans-serif}
 body.sim .langsw{background:#fff}
+/* sim mode review: keep the correct / wrong answer letters visible */
+body.sim .opt.correct b{background:var(--ok);border-color:var(--ok);color:#fff}
+body.sim .opt.wrong b{background:var(--ng);border-color:var(--ng);color:#fff}
