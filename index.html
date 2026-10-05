@@ -19,14 +19,15 @@
     <span class="timer" id="hudTimer">--:--</span>
   </div>
   <div class="volwrap simonly"><button type="button" class="volbtn" id="volBtn">🔊<span class="vtx"> Volume</span></button>
-    <div class="volpop hidden" id="volPop">音量 Volume<br><input type="range" id="volRange" min="0" max="100" value="100"></div></div>
+    <div class="volpop hidden" id="volPop"><span id="volLbl">音量 Volume</span><br><input type="range" id="volRange" min="0" max="100" value="100"></div></div>
 </header>
 <main id="app" class="app"></main>
 <footer class="foot" id="foot">
-  <p>仅限个人学习使用。所有内容均已加密，需要密码才能查看。</p>
+  <p id="footTxt">仅限个人学习使用。所有内容均已加密，需要密码才能查看。</p>
 </footer>
 <div id="simbar" class="simbar hidden"></div>
 <div id="overlay" class="overlay hidden"></div>
+<script src="js/i18n.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

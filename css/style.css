@@ -161,3 +161,10 @@ body.sim .opt.sel b{background:#1d6fb8;border-color:#1d6fb8}
 }
 body.sim .p1photo{max-height:50vh;max-height:50dvh;object-fit:contain;background:#111}
 @media (max-width:760px){body.sim .brand{display:none}body.sim .topbar{justify-content:flex-end}body.sim .examhud{margin-right:auto}.vtx{display:none}body.sim .simbar .muted{font-size:12px}}
+/* language switch (中文 / 日本語) */
+html[lang="ja"] body,[lang="ja"]{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP","Noto Sans CJK JP","Yu Gothic UI","Meiryo",sans-serif}
+.langsw{float:right;display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin:0 0 8px 10px;background:#fff}
+.langsw button{border:0;background:transparent;padding:5px 12px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;font-family:inherit}
+.langsw button.on{background:var(--brand2);color:#fff}
+.langsw button[data-lang="ja"]{font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP","Noto Sans CJK JP","Yu Gothic UI","Meiryo",sans-serif}
+body.sim .langsw{background:#fff}
