@@ -542,14 +542,9 @@ function listenPartDir(groupIndex) {
 function listenAfterGroup(i) {
   const g = S.lgroups[i], next = S.lgroups[i + 1];
   if (!next) {
-    // End of listening — play end clip then reading
-    S.phase = "L-dir";
-    app.innerHTML = `<div class="simpanel center"><h2>${t("lEndTitle")}</h2><p class="muted">${t("lEndNote")}</p></div>`;
-    simBar(`<span></span><button class="btn" id="simNext">Next ›</button>`);
-    const goR = () => { AudioEng.stop(); AudioEng.prune([]); return S.runits.length ? startReading() : submit(); };
-    $("#simNext").onclick = goR;
-    AudioEng.play(dirAudioUrl("dir_end_listening"), () => setTimeout(goR, 500)).catch(goR);
-    return;
+    // End of listening: answer window already elapsed — go straight to reading (no end-audio / dead air).
+    AudioEng.stop(); AudioEng.prune([]);
+    return S.runits.length ? startReading() : submit();
   }
   // Unit boundary → UNIT TWO transition (repeat directions)
   if (g._unit !== next._unit) {
@@ -1074,7 +1069,7 @@ function simCongrats(aid) {
   $("#simNext").onclick = () => { simBar(null); go("#/result/" + aid); };
 }
 
-if (DEBUG || FAST) window.__t = {get S() { return S; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer};   // test hook
+if (DEBUG || FAST) window.__t = {get S() { return S; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro};   // test hook
 /* ---------- boot ---------- */
 (async () => {
   if (!SIM && sessionStorage.getItem("ets950.sim") === "1") SIM = true;

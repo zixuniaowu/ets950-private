@@ -2,7 +2,7 @@
  "v": 2,
  "kdf": "PBKDF2-SHA256",
  "iter": 600000,
- "salt": "Wodz4YNA/ynR4oe1IpjQEg==",
+ "salt": "FTW4sQn6IXKVSf9/HiOgAQ==",
  "cipher": "AES-256-GCM (12-byte IV prefix)",
  "tests": [
   {
@@ -11,19 +11,19 @@
    "files": {
     "a1": {
      "file": "a1.bin",
-     "size": 1052356
+     "size": 852916
     },
     "a2": {
      "file": "a2.bin",
-     "size": 3430824
+     "size": 2599512
     },
     "a3": {
      "file": "a3.bin",
-     "size": 6898392
+     "size": 6212664
     },
     "a4": {
      "file": "a4.bin",
-     "size": 5160900
+     "size": 4632276
     },
     "p1img": {
      "file": "p1img.bin",
@@ -31,7 +31,7 @@
     },
     "data": {
      "file": "t1.bin",
-     "size": 213080
+     "size": 213069
     }
    }
   }
