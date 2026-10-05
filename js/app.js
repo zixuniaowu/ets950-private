@@ -637,11 +637,19 @@ function showTimeUpPage(msg, then) {
   clearTimeout(S.ansTimer);
   S.phase = "timeup";
   hideOverlay();
-  app.innerHTML = `<div class="simpanel center timeup"><div class="big">⏰</div><h1>${t("timeUpTitle")}</h1><p>${esc(msg)}</p><p class="muted">${t("timeUpNext")}</p></div>`;
-  simBar(S.sim ? `<span></span><button class="btn" id="timeupGo">Next ›</button>` : null);
+  app.innerHTML = `<div class="simpanel center timeup"><div class="big">⏰</div><h1>${t("timeUpTitle")}</h1><p>${esc(msg)}</p><p class="muted">${t("timeUpNext")}</p>
+   <div class="row" style="justify-content:center;gap:10px;margin-top:16px;flex-wrap:wrap">
+     <button class="btn" id="timeupGo">Next ›</button>
+     <button class="btn ghost exit-home" id="timeupHome">${t("homeBtn")}</button>
+   </div></div>`;
+  simBar(S.sim ? `<button class="btn ghost" id="timeupHomeBar">${t("homeBtn")}</button><button class="btn" id="timeupGoBar">Next ›</button>` : null);
   const goNext = () => { if (S) { S.timeupShown = false; then(); } };
-  if ($("#timeupGo")) $("#timeupGo").onclick = goNext;
-  else setTimeout(goNext, 1800);
+  const goHome = () => { abortExam(); go("#/"); };
+  const bind = (id, fn) => { const el = $("#" + id); if (el) el.onclick = fn; };
+  bind("timeupGo", goNext); bind("timeupGoBar", goNext);
+  bind("timeupHome", goHome); bind("timeupHomeBar", goHome);
+  // Non-sim: still auto-advance after delay unless user already clicked home
+  if (!S.sim) setTimeout(() => { if (S && S.phase === "timeup") goNext(); }, 1800);
 }
 function timeUpNote(msg) {   // fallback toast (non-sim)
   const n = document.createElement("div"); n.className = "toast"; n.textContent = "⏰ " + msg;
@@ -943,7 +951,8 @@ function renderResult(aid) {
   <div class="card bars"><h2>${t("partRate")}</h2>${parts}
    <p class="muted">${t("weakest")}<b>${PART_ZH[weakest]}</b></p></div>
   <div class="card"><div class="row"><a class="btn" href="#/review/${a.id}">${t("viewReview")}</a><a class="btn ghost" href="#/intro/${a.vid}">${t("retake")}</a></div>
-   <div class="row" style="margin-top:10px"><a class="btn ghost" href="#/notebook">${t("nbTitle")}</a><a class="btn ghost" href="#/wronglog">${t("wrongLogTitle")}</a><a class="btn ghost" href="#/">${t("homeBtn")}</a></div></div>
+   <div class="row" style="margin-top:10px"><a class="btn ghost" href="#/notebook">${t("nbTitle")}</a><a class="btn ghost" href="#/wronglog">${t("wrongLogTitle")}</a></div>
+   <a class="btn block exit-home" href="#/" id="exitHome" style="margin-top:14px">${t("homeBtn")}</a></div>
   ${historyCard()}`;
   const c = $("#clearHist"); if (c) c.onclick = e => { e.preventDefault(); if (confirm(t("confirmClearHist"))) { localStorage.removeItem(HKEY); go("#/"); } };
 }
@@ -1003,7 +1012,8 @@ function renderReview(aid, filter = "all") {
     <button data-f="flag" class="${filter === "flag" ? "on" : ""}">${t("tabFlag", flagged)}</button>
     ${a.lN ? `<button data-f="L" class="${filter === "L" ? "on" : ""}">${t("tabL")}</button>` : ""}
     ${a.rN ? `<button data-f="R" class="${filter === "R" ? "on" : ""}">${t("tabR")}</button>` : ""}</div>
-    <a href="#/result/${a.id}" class="muted">${t("backResult")}</a></div>`;
+    <div class="row" style="margin-top:8px;gap:10px;flex-wrap:wrap"><a href="#/result/${a.id}" class="muted">${t("backResult")}</a>
+    <a class="btn" href="#/" id="exitHome">${t("homeBtn")}</a></div></div>`;
   let lastG = null, lastSec = null, lastPart = null;
   for (const {q, g, s} of qs) {
     const mine = a.answers[q.no], ok = mine === q.answer;
@@ -1029,6 +1039,7 @@ function renderReview(aid, filter = "all") {
       <span class="status ${ok ? "ok" : "ng"}">${ok ? t("stOk") : mine === undefined ? t("stNone") : t("stNg")}</span></div>
       ${ctx}${p2note}${qCard(q, g, mine, "", `<p class="muted">${t("yourAns")}<b>${mine === undefined ? t("noAns") : LET[mine]}</b> · ${t("correctAns")}<b>${LET[q.answer]}</b></p>`)}</div>`;
   }
+  html += `<div class="card"><a class="btn block exit-home" href="#/" id="exitHomeBottom">${t("homeBtn")}</a></div>`;
   app.innerHTML = html;
   bindAudioButtons(app);
   app.querySelectorAll(".tabs button").forEach(b => b.onclick = () => renderReview(aid, b.dataset.f));

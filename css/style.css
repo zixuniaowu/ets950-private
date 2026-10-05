@@ -287,3 +287,7 @@ body.sim .simpanel.listen .opt span{font-size:16px;line-height:1.45;color:#1e293
 table.wl td,table.wl th{font-size:13px}
 table.wl code{font-size:12px;background:#f1f5f9;padding:1px 4px;border-radius:3px}
 .wlhint{white-space:pre-wrap;font-size:12px;margin-top:8px}
+
+.exit-home{font-weight:700}
+a.btn.block.exit-home,button.exit-home{background:#0f3d6e;border-color:#0f3d6e;color:#fff}
+a.btn.block.exit-home:hover{filter:brightness(1.08)}
