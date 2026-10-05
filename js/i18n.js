@@ -4,7 +4,7 @@
 const LKEY = "ets950.lang";
 let lang = localStorage.getItem(LKEY) === "ja" ? "ja" : "zh";
 const zh = {
-  pageTitle: "私人模考", brand: "🔒 私人模考", volLbl: "音量 Volume", foot: "仅限个人学习使用。所有内容均已加密，需要密码才能查看。",
+  pageTitle: "ETS 托业 950+ · 真题模考", brand: "ETS 托业 950+ · 真题模考", volLbl: "音量 Volume", foot: "仅限个人学习使用。所有内容均已加密，需要密码才能查看。",
   part1: "Part 1 照片描述", part2: "Part 2 应答问题", part3: "Part 3 会话问题", part4: "Part 4 说明文问题", part5: "Part 5 短句填空", part6: "Part 6 长文填空", part7: "Part 7 阅读理解",
   pdir1: "听 4 个描述（不印在屏幕上），选出最符合照片的一项，然后点击作答。只播放一次。",
   pdir2: "听一个问题或陈述和 3 个回答（不印在屏幕上），选出最恰当的回答，然后点击作答。只播放一次。",
@@ -65,7 +65,7 @@ const zh = {
   stOk: "✓ 正确", stNone: "✗ 未作答", stNg: "✗ 错误", yourAns: "你的答案：", noAns: "未作答", correctAns: "正确答案：",
   nbDesc: "考试中答错或未作答的题会自动加入（只保存题号和次数，在本机 localStorage）。复习后点“已掌握”移出。",
   homeBack: "‹ 首页", nbClear: "清空错题本", nbEmpty: "这里还没有错题。", wrongTimes: n => `错 ${n} 次`, lastTime: "最近一次：", mastered: "✓ 已掌握",
-  confirmNbClear: "确定清空本套题的错题本吗？", pickerTitle: "📚 选择试卷 Test", backBack: "‹ 返回 Back",
+  confirmNbClear: "确定清空本套题的错题本吗？", pickerTitle: "📚 选择试卷 · 第1套 / 第2套", backBack: "‹ 返回 Back",
   endExamQ: "确定要结束考试吗？", exitQ: "确定要退出吗？", endExamSub: "End the test? 本次作答不会保存。", exitSub: "Exit the application?",
   contExam: "继续考试 Continue", cancel: "取消 Cancel", endExam: "结束考试 End Test", refs: "⛶ 重新全屏",
   simHomeSub: t => `IP 在线考试仿真 · ${t}`,
@@ -121,7 +121,7 @@ const zh = {
 };
 
 const ja = {
-  pageTitle: "プライベート模試", brand: "🔒 プライベート模試", volLbl: "音量 Volume", foot: "個人学習専用です。すべての内容は暗号化されており、閲覧にはパスワードが必要です。",
+  pageTitle: "ETS TOEIC 950+ · 過去問模試", brand: "ETS TOEIC 950+ · 過去問模試", volLbl: "音量 Volume", foot: "個人学習専用です。すべての内容は暗号化されており、閲覧にはパスワードが必要です。",
   part1: "Part 1 写真描写問題", part2: "Part 2 応答問題", part3: "Part 3 会話問題", part4: "Part 4 説明文問題", part5: "Part 5 短文穴埋め問題", part6: "Part 6 長文穴埋め問題", part7: "Part 7 読解問題",
   pdir1: "4つの説明文（画面には表示されません）を聞き、写真を最も適切に描写しているものを選んでクリックしてください。音声は1回だけ流れます。",
   pdir2: "質問または発言と、それに対する3つの応答（画面には表示されません）を聞き、最も適切な応答を選んでクリックしてください。音声は1回だけ流れます。",
@@ -182,7 +182,7 @@ const ja = {
   stOk: "✓ 正解", stNone: "✗ 未解答", stNg: "✗ 不正解", yourAns: "あなたの解答：", noAns: "未解答", correctAns: "正解：",
   nbDesc: "試験で間違えた問題・未解答の問題が自動的に追加されます（問題番号と回数のみを、この端末の localStorage に保存）。復習が済んだら「習得済み」を押してリストから外してください。",
   homeBack: "‹ ホーム", nbClear: "間違いノートを空にする", nbEmpty: "まだ間違えた問題はありません。", wrongTimes: n => `${n} 回不正解`, lastTime: "前回：", mastered: "✓ 習得済み",
-  confirmNbClear: "このテストの間違いノートを空にしてもよろしいですか？", pickerTitle: "📚 テストを選択 Test", backBack: "‹ 戻る Back",
+  confirmNbClear: "このテストの間違いノートを空にしてもよろしいですか？", pickerTitle: "📚 テスト選択 · 第1回 / 第2回", backBack: "‹ 戻る Back",
   endExamQ: "試験を終了してもよろしいですか？", exitQ: "終了してもよろしいですか？", endExamSub: "End the test? 今回の解答は保存されません。", exitSub: "Exit the application?",
   contExam: "試験を続ける Continue", cancel: "キャンセル Cancel", endExam: "試験を終了 End Test", refs: "⛶ 全画面に戻す",
   simHomeSub: t => `IP（オンライン）テスト シミュレーション · ${t}`,
