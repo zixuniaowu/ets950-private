@@ -1411,6 +1411,62 @@ function simCongrats(aid) {
   $("#simNext").onclick = () => { simBar(null); go("#/result/" + aid); };
 }
 
+
+/* ---------- keyboard shortcuts (Ctrl and ⌘ both work) ---------- */
+function clickEnabled(sel) {
+  const el = typeof sel === "string" ? document.querySelector(sel) : sel;
+  if (!el) return false;
+  if (el.disabled || el.getAttribute("disabled") != null) return false;
+  if (el.classList && el.classList.contains("disabled")) return false;
+  el.click();
+  return true;
+}
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = (el.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  if (el.isContentEditable) return true;
+  return false;
+}
+function onExamKeydown(e) {
+  if (e.defaultPrevented || e.repeat) return;
+  if (isTypingTarget(e.target)) return;   // password / form fields
+  const mod = !!(e.ctrlKey || e.metaKey); // Ctrl (Win/Linux) or ⌘ (Mac)
+  const key = e.key;
+  const code = e.code;
+
+  // Next: →  |  Ctrl/⌘+→  |  Ctrl/⌘+Enter
+  if (key === "ArrowRight" || code === "ArrowRight" || (mod && (key === "Enter" || code === "Enter"))) {
+    if (clickEnabled("#simNext") || clickEnabled("#nextG") || clickEnabled("#timeupGo") ||
+        clickEnabled("#timeupGoBar") || clickEnabled("#gateBtn") || clickEnabled("#rStart") ||
+        clickEnabled("#unlockBtn") || clickEnabled("#endUnit") || clickEnabled("#palEnd")) {
+      e.preventDefault();
+      return;
+    }
+  }
+  // Back: ←  |  Ctrl/⌘+←
+  if (key === "ArrowLeft" || code === "ArrowLeft") {
+    if (clickEnabled("#simBack") || clickEnabled("#prevG")) {
+      e.preventDefault();
+      return;
+    }
+  }
+  // Mark for review: Ctrl/⌘+M
+  if (mod && (key === "m" || key === "M" || code === "KeyM")) {
+    const marks = [...document.querySelectorAll(".markQ")];
+    const flags = [...document.querySelectorAll(".flagbtn")];
+    if (marks.length || flags.length) {
+      e.preventDefault();
+      // Prefer mark checkbox nearest viewport center / first unchecked in view
+      const visible = marks.find(m => m.offsetParent !== null) || marks[0];
+      if (visible) { visible.checked = !visible.checked; visible.dispatchEvent(new Event("change", { bubbles: true })); return; }
+      const fb = flags.find(f => f.offsetParent !== null) || flags[0];
+      if (fb) fb.click();
+    }
+  }
+}
+document.addEventListener("keydown", onExamKeydown, true);
+
 if (DEBUG || FAST) window.__t = {get S() { return S; }, set S(v) { S = v; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw, startExam, buildVariant, abortExam, go, simQ, simPage, pageIndexForQuestion, simReview, allQuestions, scaled, dNo, isIpVid, qLabelFromAttempt, get DATA() { return DATA; }};   // test hook
 /* ---------- boot ---------- */
 (async () => {
