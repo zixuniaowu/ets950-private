@@ -17,11 +17,15 @@
 - **2時間モード（完全版 · 200問）** — 本番形式 L&R  
 - リスニングのみ / リーディングのみの練習も可  
 
-## 桌面软件 / デスクトップアプリ
+## デスクトップアプリ
 
-**中文：** Windows / Mac 全屏模考软件见 [Releases v1.1.0](https://github.com/zixuniaowu/ets950-private/releases/tag/v1.1.0)（下载说明为中日双语）。
+Windows / Mac 用の全画面模試アプリは [Releases v1.1.0](https://github.com/zixuniaowu/ets950-private/releases/tag/v1.1.0) からダウンロードできます。
 
-**日本語：** Windows / Mac 全画面模試アプリは [Releases v1.1.0](https://github.com/zixuniaowu/ets950-private/releases/tag/v1.1.0) を参照（説明は中国語＋日本語）。
+- Windows：`ETS950-Exam-1.1.0-portable.exe`
+- Mac（Apple Silicon：M1～M4）：`ETS950-Exam-1.1.0-mac-AppleSilicon.zip`
+- Mac（Intel）：`ETS950-Exam-1.1.0-mac-Intel.zip`
+
+初回起動の手順（Windows SmartScreen / Mac の「右クリック → 開く」）はリリースノートを参照してください。
 
 ## 文件说明 / ファイル
 
