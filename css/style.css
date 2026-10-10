@@ -291,3 +291,4 @@ table.wl code{font-size:12px;background:#f1f5f9;padding:1px 4px;border-radius:3p
 .exit-home{font-weight:700}
 a.btn.block.exit-home,button.exit-home{background:#0f3d6e;border-color:#0f3d6e;color:#fff}
 a.btn.block.exit-home:hover{filter:brightness(1.08)}
+.gfximg{background:#fff;max-width:640px;max-height:46vh;margin:0 auto 14px}

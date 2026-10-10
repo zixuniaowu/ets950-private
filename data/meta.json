@@ -7,52 +7,52 @@
  "timezone": "Asia/Tokyo",
  "wraps": {
   "10": {
-   "salt": "R4wK+DSnESKnNctt57ICNQ==",
-   "wrap": "XrR1TmtMKbwDFR6XegvUHv78T9XSfMyjG7ogdFxPZ0dUM7letani8VBqofDSftZygZHm0/hFjHDszegU"
+   "salt": "tyb+hEoIqyRMcTCHhcBKjw==",
+   "wrap": "GU3rV86eeqsJ7gJL/V8xKVAadhBQxIVAZjBVsQ4Sk3KsjfcD+A8lChV+2/SaQ73mvxdeQK/j/xTZdXR2"
   },
   "11": {
-   "salt": "aBYrTeZzGYu9wahumj8Rdg==",
-   "wrap": "Ae3HaQA30kY95M+Gb07qiN7/3o1TKTeEsIhje12nK2j0TCDP1FPCeXPdt438gZz2Fgs4aRldzP5hp7AF"
+   "salt": "cVkMJlcZV81/gPcfCz1V1g==",
+   "wrap": "ZTTx3QyCCYw+rG7XHQXINn1H/qIRktzkYw1RMxA21HbPNd1BtWnEspNG4724nOfXsMC8QYiK0Lrp/GrU"
   },
   "12": {
-   "salt": "cDHDym1sAyAAs+oIhuf5ew==",
-   "wrap": "sn6UzeSc/SoBGMe0+iNr9Xd9KeoIifCKZGkr4hdgrIhj+mvVz1hR29SPT1S8MkNEgFCitX/0XhpHhk5J"
+   "salt": "tObYKYdFu4zkhuIlwuSrZg==",
+   "wrap": "hGbmw/og5E7+3pIjy0LlWUwLEbZDv5RMNzVI+9XKl0lX7dzTaakxStSXn8O3wvaNaU5q81JVpQlCb6lp"
   },
   "01": {
-   "salt": "7bdPCsgKBBTtbz163FJjmA==",
-   "wrap": "FdAgIqaoiboseZpoIfmjQdVWLAXDQL4ZjoCrQF5syk8fU4I+Yu9sQK0rT+5CxKE3g6DzXlIsFB8SM77F"
+   "salt": "NP0ihlzDxQ3GBQs93dJ99w==",
+   "wrap": "cSKNw6kaH7Iho9ueaBZgLNitFdCuvtJ1IRIJ8pnGkjgJXZ7xPqCpwpdVXMbKfrAw4JvIgWF+8lWQnhS8"
   },
   "02": {
-   "salt": "y/svntzs9AH/9CmN7j+tmQ==",
-   "wrap": "i8UTSH+AwfvEGPZR/OFpAq2OS3XzYr5mQOX+dcDAmd/RHGn/Uvatzv2LHQJuAIFUIda91zQW/PMDpnxN"
+   "salt": "qFdqabkRrca/Y7c4p6ANoA==",
+   "wrap": "oC5hS9J3LqaqdpbURcRGlUnpfZK6Y7uRQ6yvKvwBLsENZZVsWckJrmrPKi08rTGMr49QsgGkdi/yUc8q"
   },
   "03": {
-   "salt": "h9a2OLhZflzzg+W2To+b+w==",
-   "wrap": "CFjJ8O8WOC0ivvx77PoLCO1nQPHV9pB77/kFwvXH+5g0mmVhA/ArQGLQ4gAho4V8I710rikztQLvGn7n"
+   "salt": "PNFpqehAl4bsGbfcnJ6UAw==",
+   "wrap": "pGKmdir6EEZ/KTZqMxR6j46P3K7/4BK2ibrutLuh1gLlv+l4DcY5tP9MoUJfeG4OcllRPgSHdMGaUld9"
   },
   "04": {
-   "salt": "Dqr8XyPY5Rcv0/anAWi0Qg==",
-   "wrap": "35IUqlIEVk8ziYuyuqRDZt9Asllv/MSgo3lRI7ZUeJS3d2F1IwMXunZ9GmtpYj2lBmGfqhamKBtGe3aJ"
+   "salt": "xq81WQR7JOQ3xDduKozVng==",
+   "wrap": "33iN6i3SUAZNOZ0Y4imNlr2yp7Vq/fnrkQ6rRLeWzCudDYGroCMgYaaK/LqMEogX78UtlsyRNPGnZ/Zh"
   },
   "05": {
-   "salt": "y2qfWs0V0pXT0PF7avnK5g==",
-   "wrap": "EOp8FvsdxlwY+UzJlBDcqKFE+Za8uHwdvfKEZmhNHIOFcdQ8klmom2f9Jj1bRLXGwuLWgbrUDbvm7CEq"
+   "salt": "NoaT0xZFN0U6JL002VcqjQ==",
+   "wrap": "skPzYsYPGW76G8jtP6qM355sbeYIW+mdEvCjhIb6v3oU3x0qzrDhO+cEWmDQATDs677bnbnZrVocmHsd"
   },
   "06": {
-   "salt": "mNndlo+V8tjkTCQrwciwaQ==",
-   "wrap": "zKP0zocPI2G/9Hg3D87aOcQjZLSpOCaoBTfRKXdnB0Ge73+xHbCDQ0v3NMx0n3KN7OhwxP2yyhG+7WaK"
+   "salt": "LhN/K5QK+HN0QC/WI4Wesg==",
+   "wrap": "AXdWD3MdZFc0VV1FH0LQoX3jD7aFDwZ6DaXd2xJmx5tZtkn7brhaabfqb5d0Ef1r8RXBsd+KmX7SUdCt"
   },
   "07": {
-   "salt": "ec8D3xh4H9C3uo/Sg5NRcQ==",
-   "wrap": "oPNUUVMA1VV0HFNcPPBAlX5bieYdNRApg4PBmGjxMQnFsMYfMQa5sbRKpmuap52H6FLZk/v6FVpY2Cg7"
+   "salt": "xIwpuePP8SixOmkDcRvcPQ==",
+   "wrap": "2W/3hWlBNFZ7hyLLaJg9PDaZx3ywrtdMkPABCYZESQZC4u00EwaFHnpkciyaTI5IqqukH3FIa0O4FLZQ"
   },
   "08": {
-   "salt": "5FE1L0pTIHcv8dRC5yT3SA==",
-   "wrap": "Mgv9qyRDZMusaDY1RWz0lKQC2he5ujWKGgLSN56VlDgR8lBfy7EZw04Ay4RLzrYEB6MBIWng+Rw304IP"
+   "salt": "seDtjPsh9n7EZ1URuWJVUw==",
+   "wrap": "lvieRovAWkjoIqyfKirIIbzaaXvMvRSnkrCr8LS6fWygeMjxyw05R8qPrRNG+pPGvgZQ4BoYNpU8MBPK"
   },
   "09": {
-   "salt": "0mAhnpYjLi/Mc5NC/f+RgQ==",
-   "wrap": "yPD1wh9JXpg6H7KCiomML2e/QRev5TAL+SK0SeYWqDn49NHGcttr2Gb5X/m8lKcZ7QLe05s1bLaUruzB"
+   "salt": "Bexemm08S3I9Au88hm2OHg==",
+   "wrap": "NdXuhpd7QRV9mLwsu2TC1MMEPMKcbHY+A7rBQl7/VK2SV3puInIuVMGiFsXuzJZlXC9xOTXCckrD58o0"
   }
  },
  "tests": [
@@ -113,6 +113,36 @@
     "data": {
      "file": "t2_data.bin",
      "size": 132124
+    }
+   }
+  },
+  {
+   "id": "t3",
+   "label": "第3套 / 第3回",
+   "files": {
+    "a1": {
+     "file": "t3_a1.bin",
+     "size": 771988
+    },
+    "a2": {
+     "file": "t3_a2.bin",
+     "size": 2458536
+    },
+    "a3": {
+     "file": "t3_a3.bin",
+     "size": 5675688
+    },
+    "a4": {
+     "file": "t3_a4.bin",
+     "size": 4124964
+    },
+    "p1img": {
+     "file": "t3_p1img.bin",
+     "size": 3214565
+    },
+    "data": {
+     "file": "t3_data.bin",
+     "size": 180775
     }
    }
   }

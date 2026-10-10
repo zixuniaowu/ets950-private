@@ -90,7 +90,7 @@ const zh = {
   wrongLogEmpty: "暂无记录。完成模考后，错题与未答题会自动写入。",
   wrongLogFmtHint: "导出格式（每行一题，无题干）：T1 IP-A Q79[IP25] P4 you:C ans:D tag:Part4-talk",
 
-  pickerTitle: "📚 选择试卷 · 第1套 / 第2套", backBack: "‹ 返回 Back",
+  pickerTitle: "📚 选择试卷", backBack: "‹ 返回 Back",
   endExamQ: "确定要结束考试吗？", exitQ: "确定要退出吗？", endExamSub: "End the test? 本次作答不会保存。", exitSub: "Exit the application?",
   contExam: "继续考试 Continue", cancel: "取消 Cancel", endExam: "结束考试 End Test", refs: "⛶ 重新全屏",
   simHomeSub: t => `IP 在线考试仿真 · ${t}`,
@@ -232,7 +232,7 @@ const ja = {
   wrongLogEmpty: "まだ記録がありません。模試を終えると誤答・未解答が自動で入ります。",
   wrongLogFmtHint: "書き出し形式（1行1問・設問文なし）：T1 IP-A Q79[IP25] P4 you:C ans:D tag:Part4-talk",
 
-  pickerTitle: "📚 テスト選択 · 第1回 / 第2回", backBack: "‹ 戻る Back",
+  pickerTitle: "📚 テスト選択", backBack: "‹ 戻る Back",
   endExamQ: "試験を終了してもよろしいですか？", exitQ: "終了してもよろしいですか？", endExamSub: "End the test? 今回の解答は保存されません。", exitSub: "Exit the application?",
   contExam: "試験を続ける Continue", cancel: "キャンセル Cancel", endExam: "試験を終了 End Test", refs: "⛶ 全画面に戻す",
   simHomeSub: t => `IP（オンライン）テスト シミュレーション · ${t}`,

@@ -168,10 +168,10 @@ function wrongLogExportText(rows) {
   const dates = rows.map(r => r.date).filter(Boolean).sort();
   const head = `# ETS950 wrong-log ${dates[0]}..${dates[dates.length - 1]} (JST)\n# line: TEST MODE Qbook[IPn] Pn you:X ans:Y tag:TAG[ ×N]\n# example: T1 IP-A Q79[IP25] P4 you:C ans:D tag:Part4-talk\n`;
   const lines = rows.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.book - b.book)).map(r => {
-    const tcode = r.tid === "t2" ? "T2" : "T1";
+    const tcode = String(r.tid || "t1").toUpperCase();
     const ver = r.version ? `-${r.version}` : "";
     const mode = isIpVid(r.mode) ? `IP${ver}` : (r.mode || "full");
-    const ip = r.ip != null ? `[IP${r.ip}]` : "";
+    const ip = r.ip != null && isIpVid(r.mode || "") ? `[IP${r.ip}]` : "";
     const times = r.n > 1 ? ` ×${r.n}` : "";
     return `${tcode} ${mode} Q${r.book}${ip} P${r.part} you:${r.you} ans:${r.ans} tag:${r.tag}${times}`;
   });
@@ -238,8 +238,22 @@ async function unlock(pw) {
   }
   TESTS = out; KEY = key; UNLOCK_YM = ym;
   for (const d of Object.values(TESTS)) await loadImages(d);
+  try { backfillWrongLog(); } catch (e) { console.error("wronglog backfill", e); }
   const last = localStorage.getItem(TKEY);
   selectTest(TESTS[last] ? last : metaTests()[0].id);
+}
+/* Attempts saved before the wrong-log was wired into submit() carry no wl flag: rebuild their rows once. */
+function backfillWrongLog() {
+  const h = loadHist(); let changed = false;
+  for (const att of h) {
+    if (att.wl) continue;
+    const d = TESTS[att.tid || "t1"], v = d && d.variants && d.variants[att.vid];
+    if (!v || !att.answers) continue;
+    const qs = [];
+    for (const s of v.sections) for (const u of s.units) for (const gid of u.groups) { const g = d.groups[gid]; if (g) for (const q of g.questions) qs.push({q, g}); }
+    recordWrongLog(att, qs); att.wl = 1; changed = true;
+  }
+  if (changed) saveHist(h);
 }
 function selectTest(id) { TID = id; DATA = TESTS[id]; localStorage.setItem(TKEY, id); }
 /* Part 1 photos: one encrypted blob per test → Blob URL per photo */
@@ -671,7 +685,7 @@ function bindOpts(root) {
 const photoImg = g => DATA._img[g.questions[0].no] ? `<img class="scene p1photo" src="${DATA._img[g.questions[0].no]}" alt="${t("photoAlt", g.questions[0].no)}">` : `<div class="photo-ph"><div class="lbl">${t("photoFail")}</div></div>`;
 const photoHTML = photoImg;
 const photoReviewHTML = g => `${photoImg(g)}${g.photo ? `<div class="photo-ph refdesc"><div class="lbl">${t("refDesc")}</div><p>${esc(g.photo)}</p></div>` : ""}`;
-const gfxHTML = g => g.graphic ? tableHTML(g.graphic.rows, g.graphic.title) : "";
+const gfxHTML = g => { if (!g.graphic) return ""; const u = DATA._img && DATA._img["g" + g.questions[0].no]; return u ? `<img class="scene gfximg" src="${u}" alt="${esc(g.graphic.title || "graphic")}">` : tableHTML(g.graphic.rows, g.graphic.title); };
 
 function dirAudioUrl(key) { return "audio/" + key + ".mp3"; }
 
@@ -920,6 +934,7 @@ function submit() {
   const att = {id: String(Date.now()), tid: TID, testLabel: DATA._label, vid: T.id, modeName: T.name, disp: S.disp ? Object.assign({}, S.disp) : null, date: now,
     lRaw: l, lN, rRaw: r, rN, lScore, rScore, total: lScore + rScore, parts, answers: S.answers, flags: S.flags,
     minutes: Math.round((Date.now() - S.started) / 60000)};
+  try { recordWrongLog(att, qs); att.wl = 1; } catch (e) { console.error("wronglog", e); }
   const h = loadHist(); h.push(att); saveHist(h);
   const wasSim = S.sim; S = null; setHud(false); simBar(null);
   if (SHELL) SHELL.setExamActive(false);
@@ -1066,8 +1081,8 @@ function renderWrongLog(filter = "all") {
   else {
     html += `<div class="card"><table class="hist wl"><tr><th>${t("thDate")}</th><th>Test</th><th>#</th><th>Part</th><th>you</th><th>ans</th><th>tag</th><th>×</th></tr>`;
     for (const r of rows) {
-      const tcode = r.tid === "t2" ? "T2" : "T1";
-      const ip = r.ip != null ? ` <small class="muted">IP${r.ip}</small>` : "";
+      const tcode = String(r.tid || "t1").toUpperCase();
+      const ip = r.ip != null && isIpVid(r.mode || "") ? ` <small class="muted">IP${r.ip}</small>` : "";
       html += `<tr><td>${esc(r.date || "")}</td><td>${tcode}${r.version ? "-" + r.version : ""}</td><td>Q${r.book}${ip}</td><td>P${r.part}</td><td>${esc(r.you)}</td><td>${esc(r.ans)}</td><td><code>${esc(r.tag)}</code></td><td>${r.n || 1}</td></tr>`;
     }
     html += `</table></div>`;
@@ -1083,8 +1098,8 @@ function renderWrongLog(filter = "all") {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `ets950-wronglog-${tokyoDateStr()}.txt`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    document.body.appendChild(a); a.click(); a.remove();
+    const href = a.href; setTimeout(() => URL.revokeObjectURL(href), 60000);   // revoking synchronously can yield an empty/failed download (Electron)
     exp.textContent = t("wrongLogCopied");
     setTimeout(() => { exp.textContent = t("wrongLogExport"); }, 2000);
   };
@@ -1467,7 +1482,7 @@ function onExamKeydown(e) {
 }
 document.addEventListener("keydown", onExamKeydown, true);
 
-if (DEBUG || FAST) window.__t = {get S() { return S; }, set S(v) { S = v; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw, startExam, buildVariant, abortExam, go, simQ, simPage, pageIndexForQuestion, simReview, allQuestions, scaled, dNo, isIpVid, qLabelFromAttempt, get DATA() { return DATA; }};   // test hook
+if (DEBUG || FAST) window.__t = {get S() { return S; }, set S(v) { S = v; }, AudioEng, loadHist, FAST, ANSWER_GAP, showAnsTimer, playGroup, listenAfterGroup, startReading, listenUnitIntro, tokyoYM, tokyoMM, unlock, clearSavedPw, startExam, buildVariant, abortExam, go, simQ, simPage, pageIndexForQuestion, simReview, allQuestions, scaled, dNo, isIpVid, qLabelFromAttempt, submit, selectTest, get DATA() { return DATA; }};   // test hook
 /* ---------- boot ---------- */
 (async () => {
   if (!SIM && sessionStorage.getItem("ets950.sim") === "1") SIM = true;
