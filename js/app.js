@@ -16,6 +16,8 @@ function bindLang(rerender) {
 }
 const HKEY = "ets950.history.v1", NKEY = "ets950.notebook.v1", WKEY = "ets950.wronglog.v1", PWKEY = "ets950.pw", PWMKEY = "ets950.pwMonth", TKEY = "ets950.tid", VKEY = "ets950.vol";
 const SHELL = window.examShell || null;   // set by the Electron preload (desktop exam app)
+/* Android app (Capacitor): native plugins via the injected bridge; null in browsers/Electron */
+const NATIVE = (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) ? window.Capacitor.Plugins : null;
 let SIM = !!SHELL;                          // IP-online style full-screen simulation mode
 
 /* ---------- approximate score conversion (NOT official) ---------- */
@@ -492,6 +494,7 @@ function renderIntro(vid) {
 
 let wakeLock = null;
 async function requestWakeLock() {
+  if (NATIVE && NATIVE.KeepAwake) { try { await NATIVE.KeepAwake.keepAwake(); } catch {} return; }
   try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch {}
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && S && !S.done) requestWakeLock(); });
@@ -542,6 +545,22 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden && S && S.phase === "L" && AudioEng.ctx && AudioEng.ctx.state !== "running") {
     showOverlay(`<div class="gate"><div class="big">⏸</div><p>${t("audioPaused")}</p><button class="btn block" id="resumeBtn">${t("tapResume")}</button></div>`);
     $("#resumeBtn").onclick = () => { AudioEng.ctx.resume(); hideOverlay(); };
+  }
+});
+
+/* tap-to-zoom for photos / graphics (mainly phones) */
+document.addEventListener("click", e => {
+  const img = e.target.closest && e.target.closest("img.gfximg, img.p1photo");
+  if (img) {
+    const z = document.createElement("div"); z.className = "zoomov";
+    z.innerHTML = `<button type="button" class="zoomclose" aria-label="close">✕</button><img src="${img.src}" alt=""><div class="zoomhint">${t("zoomHint")}</div>`;
+    let wide = false; const zi = z.querySelector("img");
+    zi.onclick = ev => { ev.stopPropagation(); wide = !wide; zi.classList.toggle("wide", wide); };
+    z.onclick = () => z.remove(); document.body.appendChild(z); return;
+  }
+});
+window.addEventListener("hashchange", () => document.querySelectorAll(".zoomov").forEach(z => z.remove()));
+document.addEventListener("click", e => { if (0) {
   }
 });
 
@@ -617,7 +636,7 @@ function showReadingTimer(sec) {
   hudTimer.classList.add("reading");
   hudTimer.textContent = fmtHMS(sec);
 }
-function releaseWake() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } hudTimer.classList.remove("warn", "reading"); hudTimer.classList.remove("hidden"); }
+function releaseWake() { if (NATIVE && NATIVE.KeepAwake) NATIVE.KeepAwake.allowSleep().catch(() => {}); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } hudTimer.classList.remove("warn", "reading"); hudTimer.classList.remove("hidden"); }
 function abortExam() { releaseWake(); simBar(null); if (SHELL) SHELL.setExamActive(false); if (!S) return; AudioEng.stop(); AudioEng.prune([]); clearInterval(S.tick); clearTimeout(S.ansTimer); S = null; hideOverlay(); setHud(false); }
 
 function tick() {
@@ -1093,6 +1112,14 @@ function renderWrongLog(filter = "all") {
   const exp = $("#wlExport");
   if (exp) exp.onclick = async () => {
     const text = wrongLogExportText(loadWrongLog());
+    if (NATIVE && NATIVE.Filesystem && NATIVE.Share) {   // Android: save a copy to Documents, then open the share sheet
+      const name = `ets950-wronglog-${tokyoDateStr()}.txt`;
+      try { await NATIVE.Filesystem.writeFile({ path: name, data: text, directory: "DOCUMENTS", encoding: "utf8", recursive: true }); } catch (e) { console.warn("documents", e); }
+      try { const r = await NATIVE.Filesystem.writeFile({ path: name, data: text, directory: "CACHE", encoding: "utf8" });
+        await NATIVE.Share.share({ title: name, files: [r.uri], dialogTitle: name }); } catch (e) { console.warn("share", e); }
+      exp.textContent = t("wrongLogCopied"); setTimeout(() => { exp.textContent = t("wrongLogExport"); }, 2000);
+      return;
+    }
     try { await navigator.clipboard.writeText(text); } catch {}
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const a = document.createElement("a");
@@ -1176,8 +1203,17 @@ function simConfirmExit() {
   showOverlay(`<h2>${inExam ? t("endExamQ") : t("exitQ")}</h2><p class="muted">${inExam ? t("endExamSub") : t("exitSub")}</p>
    <div class="row"><button class="btn ghost" id="cxNo">${inExam ? t("contExam") : t("cancel")}</button><button class="btn warn" id="cxYes">${inExam ? t("endExam") : t("exitBtn")}</button></div>`);
   $("#cxNo").onclick = hideOverlay;
-  $("#cxYes").onclick = () => { hideOverlay(); abortExam(); if (SHELL) SHELL.quit(); else exitSim(); };
+  $("#cxYes").onclick = () => { hideOverlay(); abortExam(); if (SHELL) SHELL.quit(); else if (NATIVE && inExam) go("#/"); else exitSim(); };
 }
+if (NATIVE && NATIVE.App) NATIVE.App.addListener("backButton", () => {
+  if (document.querySelector(".zoomov")) return document.querySelectorAll(".zoomov").forEach(z => z.remove());
+  if (overlay && !overlay.classList.contains("hidden")) { if (overlay.dataset.dismiss === "1") hideOverlay(); return; }
+  if (S && !S.done) return simConfirmExit();            // confirm before leaving an exam
+  const h = location.hash || "#/";
+  if (h !== "#/" && h !== "#" && h !== "") return go("#/");
+  if (SIM) return exitSim();
+  NATIVE.App.exitApp();
+});
 if (SHELL) {
   SHELL.onCloseRequest(() => simConfirmExit());
   document.addEventListener("contextmenu", e => e.preventDefault());
@@ -1348,14 +1384,29 @@ function simPage(i, scrollNo) {
       <div class="qtext">${stem}</div>
       ${optsHTML(q, true)}</div>`;
   }).join("");
-  app.innerHTML = `<div class="simq${hasDoc ? " split" : ""}">
+  app.innerHTML = `<div class="simq${hasDoc ? " split pane-doc" : ""}">
+   ${hasDoc ? `<div class="splittabs"><button type="button" class="on" data-pane="doc">${t("paneDoc")}</button><button type="button" data-pane="ask">${t("paneAsk", qs.length)}</button></div>` : ""}
    ${hasDoc ? `<div class="simdoc">${newPart ? `<div class="dirnote">${SIM_DIR[g.part]}</div>` : ""}${docsHTML(g)}</div>` : ""}
    <div class="simask">
     <div class="qhead pageprog"><div class="qnum">${qLabel} <span class="muted">${progLabel}</span></div></div>
     ${askBlocks}</div></div>`;
   bindOpts(app);
   app.querySelectorAll(".markQ").forEach(el => el.onchange = e => { S.flags[+el.dataset.no] = e.target.checked; });
-  simBar(`<button class="btn ghost" id="simBack" ${i === 0 ? "disabled" : ""}>‹ Back</button><button class="btn ghost" id="simRev">Review</button><button class="btn" id="simNext">Next ›</button>`);
+  simBar(`<button class="btn ghost" id="simBack" ${i === 0 ? "disabled" : ""}>‹ Back</button><button class="btn ghost mob-only" id="simMark">${t("markBtn")}</button><button class="btn ghost" id="simRev">Review</button><button class="btn" id="simNext">Next ›</button>`);
+  const sq = app.querySelector(".simq");
+  const setPane = p => { if (!sq.classList.contains("split")) return; sq.classList.toggle("pane-doc", p === "doc"); sq.classList.toggle("pane-ask", p === "ask");
+    sq.querySelectorAll(".splittabs button").forEach(b => b.classList.toggle("on", b.dataset.pane === p)); window.scrollTo(0, 0); };
+  sq.querySelectorAll(".splittabs button").forEach(b => b.onclick = () => setPane(b.dataset.pane));
+  const markBtnSync = () => { const no = curMarkNo(); $("#simMark").classList.toggle("on", !!S.flags[no]); };
+  const curMarkNo = () => {   // question nearest the top of the visible questions pane
+    const bl = [...app.querySelectorAll(".simask .qblock")]; let best = bl[0];
+    for (const b of bl) { const r = b.getBoundingClientRect(); if (r.top < window.innerHeight * 0.45 && r.bottom > 60) { best = b; break; } }
+    return best ? +best.id.slice(1) : first.no; };
+  $("#simMark").onclick = () => { const no = curMarkNo(); S.flags[no] = !S.flags[no]; const cb = app.querySelector(`.markQ[data-no="${no}"]`); if (cb) cb.checked = S.flags[no]; markBtnSync(); };
+  app.querySelectorAll(".markQ").forEach(el => el.addEventListener("change", markBtnSync));
+  markBtnSync();
+  { const tb = document.querySelector(".topbar"); if (tb) document.documentElement.style.setProperty("--mtop", tb.getBoundingClientRect().height + "px"); }
+  if (scrollNo && hasDoc && window.matchMedia("(max-width:600px)").matches) setPane("ask");
   $("#simBack").onclick = () => simPage(i - 1);
   $("#simRev").onclick = () => simReview("all");
   $("#simNext").onclick = () => i + 1 < S.rpages.length ? simPage(i + 1) : simReview("all");

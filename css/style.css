@@ -292,3 +292,31 @@ table.wl code{font-size:12px;background:#f1f5f9;padding:1px 4px;border-radius:3p
 a.btn.block.exit-home,button.exit-home{background:#0f3d6e;border-color:#0f3d6e;color:#fff}
 a.btn.block.exit-home:hover{filter:brightness(1.08)}
 .gfximg{background:#fff;max-width:640px;max-height:46vh;margin:0 auto 14px}
+
+/* ---------- phones (portrait ≤600px); desktop untouched ---------- */
+.splittabs,.mob-only{display:none}
+.zoomov{position:fixed;inset:0;z-index:90;background:rgba(15,23,42,.94);overflow:auto;display:flex;align-items:center;justify-content:center;touch-action:pinch-zoom pan-x pan-y}
+.zoomov img{max-width:100%;max-height:100%;background:#fff}
+.zoomov img.wide{max-width:none;max-height:none;width:220%}
+.zoomhint{position:fixed;left:0;right:0;bottom:14px;text-align:center;color:#cbd5e1;font-size:13px}
+img.gfximg,img.p1photo{cursor:zoom-in}
+@media(max-width:600px){
+  html,body{overflow-x:clip}
+  .btn,button,.tabs button,.mode-card{min-height:44px}
+  .opt{min-height:48px}
+  body.sim .opts.letters .opt{min-height:60px}
+  .mob-only{display:inline-flex;align-items:center;justify-content:center}
+  #simMark.on{background:#fef3c7;border-color:#d97706;color:#92400e}
+  body.sim .simbar{gap:6px;padding:8px 6px calc(8px + env(safe-area-inset-bottom))}
+  body.sim .p1photo,img.gfximg{width:100%;max-width:100%;max-height:none;margin-left:0;margin-right:0}
+  .simq.split .splittabs{display:flex;position:sticky;top:var(--mtop,58px);z-index:5;background:#fff;border-bottom:1px solid #d1d5db;margin:-14px -14px 10px}
+  .splittabs button{flex:1;border:0;background:#f1f5f9;font-weight:700;font-size:14px;color:#334155;border-bottom:3px solid transparent}
+  .splittabs button.on{background:#fff;color:#0f3d6e;border-bottom-color:#1a6bb5}
+  .simq.split.pane-doc .simask,.simq.split.pane-ask .simdoc{display:none}
+  .simq.split .simdoc{border-bottom:0}
+  table.wl,table.hist{display:block;overflow-x:auto;max-width:100%}
+  .qtext{font-size:16px;line-height:1.5}
+  pre.wlhint{overflow-x:auto}
+}
+.zoomclose{position:fixed;top:calc(10px + env(safe-area-inset-top));right:10px;z-index:91;width:48px;height:48px;border-radius:24px;border:0;background:#fff;color:#0f172a;font-size:22px;font-weight:700}
+@media(max-width:600px){body.sim .simask .qblock{scroll-margin-top:150px}}
