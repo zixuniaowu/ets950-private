@@ -19,12 +19,12 @@
 
 ## デスクトップアプリ
 
-Windows / Mac / Android 用の模試アプリは [Releases v1.2.0](https://github.com/zixuniaowu/ets950-private/releases/tag/v1.2.0) からダウンロードできます。
+Windows / Mac / Android 用の模試アプリは [Releases v1.2.1](https://github.com/zixuniaowu/ets950-private/releases/tag/v1.2.1) からダウンロードできます。
 
-- Windows：`ETS950-Exam-1.2.0-portable.exe`
-- Mac（Apple Silicon：M1～M4）：`ETS950-Exam-1.2.0-mac-AppleSilicon.zip`
-- Mac（Intel）：`ETS950-Exam-1.2.0-mac-Intel.zip`
-- Android（スマートフォン / タブレット）：`ETS950-Exam-1.2.0-android.apk`（インストール時に「この提供元のアプリを許可」をオンにしてください。オフラインで利用可能）
+- Windows：`ETS950-Exam-1.2.1-portable.exe`
+- Mac（Apple Silicon：M1～M4）：`ETS950-Exam-1.2.1-mac-AppleSilicon.zip`
+- Mac（Intel）：`ETS950-Exam-1.2.1-mac-Intel.zip`
+- Android（スマートフォン / タブレット）：`ETS950-Exam-1.2.1-android.apk`（インストール時に「この提供元のアプリを許可」をオンにしてください。オフラインで利用可能）
 
 動作環境：Windows 10 / 11（64bit）、macOS 12 Monterey 以降、Android 7.0 以降。Web 版はスマートフォン表示にも対応しています。
 
