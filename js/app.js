@@ -571,7 +571,9 @@ function startExam(test) {
   if (SHELL) SHELL.setExamActive(true);
   simBar(S.sim ? "" : null);
   const L = test.sections.find(s => s.id === "L");
-  S.lunits = L ? L.units.map(u => ({name: u.name, groups: u.groups.map(g => Object.assign(g, {_unit: u}))})) : [];
+  // g._unit must point at the S.lunits entry itself (listenAfterGroup looks the unit up by identity;
+  // pointing at the source unit made UNIT TWO resolve to -1 and skip straight to Reading in sim mode).
+  S.lunits = L ? L.units.map(u => { const lu = {name: u.name, groups: u.groups}; for (const g of u.groups) g._unit = lu; return lu; }) : [];
   S.lgroups = S.lunits.flatMap(u => u.groups);
   S.lTotal = S.lgroups.reduce((a, g) => a + g.duration, 0);
   S.lCount = S.lgroups.reduce((a, g) => a + g.questions.length, 0);
@@ -781,8 +783,8 @@ function listenAfterGroup(i) {
   }
   // Unit boundary → UNIT TWO transition (repeat directions)
   if (g._unit !== next._unit) {
-    const lu = S.lunits.findIndex(u => u === next._unit);
-    return listenUnitIntro(lu);
+    const lu = S.lunits.findIndex(u => u === next._unit || u.groups.includes(next));
+    return lu >= 0 ? listenUnitIntro(lu) : playGroup(i + 1);
   }
   // Part boundary → part directions
   if (g.part !== next.part) return listenPartDir(i + 1);
